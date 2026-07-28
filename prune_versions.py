@@ -108,7 +108,12 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
             active_fns.append(lambda vf, p=pat: p in vf.path)
     if args.ext:
         exts = {e.lower() if e.startswith(".") else "." + e.lower() for e in args.ext}
-        active_fns.append(lambda vf: PurePosixPath(vf.path.lower()).suffix in exts)
+        def _ext_match(vf: VersionedFile, exts=exts) -> bool:
+            p = vf.path.lower()
+            if any(p.endswith(e) for e in exts if e in (".gz", ".bz2", ".xz")):
+                return True
+            return PurePosixPath(p).suffix in exts
+        active_fns.append(_ext_match)
 
     if not active_fns:
         print("Error: no active filters. Check your config.toml or --filter arguments.",
@@ -139,6 +144,8 @@ def parse_size(s: str) -> int:
 def versions_to_delete(vf: VersionedFile, keep_n: int | None, older_than: int | None) \
         -> list[OldVersion]:
     if keep_n is not None and older_than is not None:
+        # OR logic: delete if outside the top N *or* older than the cutoff.
+        # Anything that fails either condition is removed.
         recent = set(id(v) for v in vf.old_versions[:keep_n])
         cutoff = datetime.now() - timedelta(days=older_than)
         return [

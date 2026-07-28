@@ -146,9 +146,10 @@ Each time a synced file is modified, MEGA stores the previous copy as a version.
 
 ## Requirements
 
+- **Python** ≥ 3.11 — uses `tomllib` from the standard library
 - **MEGAcmd** ≥ 2.5 — official MEGA CLI with version support
 
-No Python dependencies beyond the standard library.
+No third-party Python packages required.
 
 ## Install
 
