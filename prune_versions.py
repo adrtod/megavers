@@ -21,16 +21,29 @@ from analyze_versions import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
 )
 
-DEFAULT_CONFIG = Path(__file__).parent / "config.toml"
+BUNDLED_CONFIG = Path(__file__).parent / "config.toml"
+
+CONFIG_SEARCH_PATH = [
+    Path.cwd() / "config.toml",
+    Path.home() / ".config" / "mega-version-cleaner" / "config.toml",
+    BUNDLED_CONFIG,
+]
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
 
+def find_config() -> Path:
+    """Return the first config file found in the search path."""
+    for candidate in CONFIG_SEARCH_PATH:
+        if candidate.exists():
+            return candidate
+    # None found — tell the user where to put one
+    paths = "\n  ".join(str(p) for p in CONFIG_SEARCH_PATH)
+    print(f"Error: no config.toml found. Searched:\n  {paths}", file=sys.stderr)
+    sys.exit(1)
+
+
 def load_config(path: Path) -> list[dict]:
-    if not path.exists():
-        print(f"Error: config file not found: {path}", file=sys.stderr)
-        print("Create a config.toml next to this script to define filters.", file=sys.stderr)
-        sys.exit(1)
     with open(path, "rb") as fh:
         data = tomllib.load(fh)
     return data.get("filter", [])
@@ -302,8 +315,10 @@ examples:
                      help="Cloud path to scan (default: /)")
     src.add_argument("--from-json", metavar="FILE",
                      help="Load from analyze_versions.py --json output (skips re-scanning)")
-    src.add_argument("--config", metavar="FILE", type=Path, default=DEFAULT_CONFIG,
-                     help=f"Config file (default: {DEFAULT_CONFIG})")
+    src.add_argument("--config", metavar="FILE", type=Path, default=None,
+                     help="Config file path. Default search order: "
+                          "./config.toml → ~/.config/mega-version-cleaner/config.toml "
+                          "→ bundled default")
 
     flt = parser.add_argument_group("filters")
     flt.add_argument("--filter", metavar="NAME", action="append",
@@ -330,10 +345,11 @@ examples:
 
     args = parser.parse_args()
 
-    config_filters = load_config(args.config)
+    config_path = args.config or find_config()
+    config_filters = load_config(config_path)
 
     if args.list_filters:
-        print(f"Filters in {args.config}:")
+        print(f"Filters in {config_path}:")
         for f in config_filters:
             print(f"  [{f['name']}]  {f.get('description', '')}")
             if f.get("path_contains"):
