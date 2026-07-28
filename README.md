@@ -65,26 +65,26 @@ filters (combinable, OR logic — git and results are on by default):
   --min-version-size SIZE  Only select files where version space >= SIZE (e.g. 50MB)
 
 mode:
-  --execute             Actually delete. Without this flag: dry-run only.
+  --dry-run             Preview what would be deleted without actually deleting.
 ```
 
 **Examples:**
 
 ```bash
-# Preview default filters (git + results)
+# Delete with default filters (git + results)
 python3 prune_versions.py
 
-# Delete with default filters
-python3 prune_versions.py --execute
+# Preview before deleting
+python3 prune_versions.py --dry-run
 
 # Delete, reusing a previously saved scan to avoid re-fetching
-python3 prune_versions.py --from-json results.json --execute
+python3 prune_versions.py --from-json results.json
 
 # Also delete versions of all .csv files
-python3 prune_versions.py --ext .csv --execute
+python3 prune_versions.py --ext .csv
 
 # Only git, skip results
-python3 prune_versions.py --no-results --execute
+python3 prune_versions.py --no-results
 ```
 
 ## How MEGA versioning works

@@ -210,20 +210,20 @@ filters (combinable, OR logic — git and results are on by default):
   --ext EXT          file extension, e.g. .pkl  (repeatable)
 
 examples:
-  # Preview default filters (git + results)
+  # Delete with default filters (git + results)
   python3 prune_versions.py
 
-  # Delete with default filters
-  python3 prune_versions.py --execute
+  # Preview before deleting
+  python3 prune_versions.py --dry-run
 
   # Delete, reusing a previously saved scan
-  python3 prune_versions.py --from-json results.json --execute
+  python3 prune_versions.py --from-json results.json
 
-  # Delete versions of all .csv files too
-  python3 prune_versions.py --ext .csv --execute
+  # Also delete versions of all .csv files
+  python3 prune_versions.py --ext .csv
 
   # Only git, skip results
-  python3 prune_versions.py --no-results --execute
+  python3 prune_versions.py --no-results
 """,
     )
 
@@ -250,8 +250,8 @@ examples:
 
     # Mode
     mode = parser.add_argument_group("mode")
-    mode.add_argument("--execute", action="store_true",
-                      help="Actually delete. Without this flag, runs as dry-run.")
+    mode.add_argument("--dry-run", action="store_true",
+                      help="Preview what would be deleted without actually deleting.")
 
     args = parser.parse_args()
 
@@ -265,10 +265,10 @@ examples:
         print("No files matched the given filters.")
         return
 
-    if args.execute:
-        execute_prune(selected)
-    else:
+    if args.dry_run:
         print_dry_run(selected, all_version_bytes)
+    else:
+        execute_prune(selected)
 
 
 if __name__ == "__main__":
