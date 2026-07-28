@@ -1,5 +1,10 @@
 # megavers
 
+[![CI](https://github.com/adrtod/megavers/actions/workflows/ci.yml/badge.svg)](https://github.com/adrtod/megavers/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/megavers)](https://pypi.org/project/megavers/)
+[![Python](https://img.shields.io/pypi/pyversions/megavers)](https://pypi.org/project/megavers/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Tools for analyzing and selectively pruning file version history in a MEGA cloud storage account.
 
 ## Motivation

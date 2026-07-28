@@ -29,7 +29,7 @@
 
 - [x] `--version` flag
 - [x] `CHANGELOG.md`
-- [ ] README badges (license, Python version, PyPI)
+- [x] README badges (license, Python version, PyPI)
 - [x] Warn in README that `mega-login email password` exposes password in shell history — prefer interactive `mega-login email`
 
 ## Lower priority
