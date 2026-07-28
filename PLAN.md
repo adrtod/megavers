@@ -16,8 +16,8 @@
 
 ## Testing
 
-- [ ] Unit tests for `parse()` — cover edge cases in `mega-ls` output formatting
-- [ ] Unit tests for filter logic (`build_filter_fn`, `apply_filters`, `versions_to_delete`)
+- [x] Unit tests for `parse()` — cover edge cases in `mega-ls` output formatting
+- [x] Unit tests for filter logic (`build_filter_fn`, `apply_filters`, `versions_to_delete`)
 - [ ] CI with GitHub Actions — run tests on push
 
 ## Cross-platform
