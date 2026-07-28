@@ -91,7 +91,10 @@ def test_load_config_bundled_fallback_when_path_is_none():
     # more workflow-specific examples (e.g. "results") are commented out.
     filters = load_config(None)
     names = {f["name"] for f in filters}
-    assert names == {"git", "os-junk", "editor-swap", "office-locks"}
+    assert names == {
+        "git", "os-junk", "editor-swap", "office-locks",
+        "python-cache-dirs", "python-bytecode",
+    }
 
 def test_load_config_from_explicit_path(tmp_path):
     cfg = tmp_path / "config.toml"

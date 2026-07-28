@@ -90,7 +90,7 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 
 Filters are defined in `config.toml`. Each filter has a name and at least one of: a list of path substrings (`path_contains`, case-sensitive, matching MEGA's own path semantics) or a list of extensions. If both are set, both must match (AND). Across filters, any match selects the file (OR). A filter with neither `path_contains` nor `extensions` is rejected at startup, since it would otherwise match every file in the account.
 
-The bundled default ships with a few filters active that are broadly applicable regardless of your workflow — git internals and common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files). More workflow-specific examples (like `results` below) are included commented out. Customize by creating your own `./config.toml` or `~/.config/megavers/config.toml`, or use `--path-contains` / `--ext` on the command line.
+The bundled default ships with a few filters active that are broadly applicable regardless of your workflow — git internals, common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), and Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.). More workflow-specific examples (like `results` below) are included commented out. Customize by creating your own `./config.toml` or `~/.config/megavers/config.toml`, or use `--path-contains` / `--ext` on the command line.
 
 ```toml
 [[filter]]

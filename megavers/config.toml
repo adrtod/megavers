@@ -2,9 +2,10 @@
 #
 # This is the bundled default, used only when no config.toml is found in the
 # current directory or in ~/.config/megavers/config.toml. It ships with a few
-# generally-applicable filters active (git internals, OS/editor junk files)
-# and one commented-out example for a more workflow-specific case. To
-# customize, copy this file to ~/.config/megavers/config.toml and edit it there.
+# generally-applicable filters active (git internals, OS/editor junk files,
+# Python caches) and one commented-out example for a more workflow-specific
+# case. To customize, copy this file to ~/.config/megavers/config.toml and
+# edit it there.
 #
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.
@@ -39,6 +40,19 @@ extensions = [".swp"]
 name = "office-locks"
 description = "Microsoft Office lock files, created while a document is open"
 path_contains = ["/~$"]
+
+[[filter]]
+name = "python-cache-dirs"
+description = "Python cache and build-artifact directories"
+path_contains = [
+    "/__pycache__/", "/.pytest_cache/", "/.mypy_cache/", "/.ruff_cache/",
+    ".egg-info/", "/.ipynb_checkpoints/",
+]
+
+[[filter]]
+name = "python-bytecode"
+description = "Compiled Python bytecode files"
+extensions = [".pyc", ".pyo"]
 
 # Example: binary output files under result/sandbox/output directories
 # [[filter]]
