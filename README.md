@@ -178,7 +178,8 @@ MEGAcmd maintains its own session, independent of MEGAsync:
 
 ```bash
 mega-login your@email.com
-# prompts for password interactively
+# prompts for password interactively — do not pass the password as an argument,
+# as it would be visible in shell history and process listings
 ```
 
 Verify with:

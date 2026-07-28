@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 
 from analyze_versions import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
+    __version__,
 )
 
 BUNDLED_CONFIG = Path(__file__).parent / "config.toml"
@@ -346,6 +347,7 @@ examples:
                       help="Preview what would be deleted without actually deleting.")
     mode.add_argument("--list-filters", action="store_true",
                       help="List filters defined in config and exit.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
 

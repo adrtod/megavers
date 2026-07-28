@@ -13,6 +13,12 @@ import argparse
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
+try:
+    __version__ = _pkg_version("megavers")
+except PackageNotFoundError:
+    __version__ = "0.1.0"
 
 
 # ── Output line patterns ──────────────────────────────────────────────────────
@@ -294,6 +300,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Analyze MEGA versioning space usage (requires MEGAcmd)."
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "path", nargs="?", default="/",
         help="Cloud path to analyze (default: /)",
