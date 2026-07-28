@@ -60,6 +60,17 @@ class VersionedFile:
     def oldest_mtime(self) -> Optional[str]:
         return min((v.mtime for v in self.old_versions), default=None)
 
+    @property
+    def churn_rate(self) -> Optional[float]:
+        """Versions per day, measured from oldest version to now."""
+        if not self.old_versions or not self.oldest_mtime:
+            return None
+        oldest = datetime.fromisoformat(self.oldest_mtime)
+        days = (datetime.now() - oldest).total_seconds() / 86400
+        if days < 1:
+            return None
+        return self.old_count / days
+
 
 # ── MEGAcmd interaction ───────────────────────────────────────────────────────
 
@@ -237,6 +248,17 @@ def print_report(versioned: dict[str, VersionedFile], top_n: int) -> None:
     for vf in sorted(files, key=lambda f: f.old_count, reverse=True)[:top_n]:
         print(f"{vf.old_count:>5}  {fmt_size(vf.version_size):>10}  "
               f"{fmt_size(vf.current_size):>10}  {vf.path}")
+
+    # By churn rate
+    with_rate = [f for f in files if f.churn_rate is not None]
+    print()
+    print(f"TOP {top_n} FILES BY CHURN RATE (versions/day)")
+    print("-" * W)
+    print(f"{'V/DAY':>7}  {'VERS':>5}  {'SINCE':>12}  PATH")
+    print("-" * W)
+    for vf in sorted(with_rate, key=lambda f: f.churn_rate, reverse=True)[:top_n]:
+        since = fmt_date(vf.oldest_mtime)
+        print(f"{vf.churn_rate:>7.2f}  {vf.old_count:>5}  {since:>12}  {vf.path}")
 
 
 # ── JSON export ───────────────────────────────────────────────────────────────
