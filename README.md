@@ -51,7 +51,8 @@ Deletes old version histories for files matched by one or more filters. Always d
 ```
 usage: prune_versions.py [-h] [--from-json FILE]
                          [--no-git] [--no-results] [--path-contains STR] [--ext EXT]
-                         [--min-version-size SIZE] [--execute] [path]
+                         [--min-version-size SIZE] [--keep-n N] [--older-than DAYS]
+                         [--dry-run] [path]
 
 source:
   path                  Cloud path to scan (default: /)
@@ -63,6 +64,10 @@ filters (combinable, OR logic — git and results are on by default):
   --path-contains STR   Select files whose path contains STR (repeatable)
   --ext EXT             Select files with this extension, e.g. .pkl (repeatable)
   --min-version-size SIZE  Only select files where version space >= SIZE (e.g. 50MB)
+
+version selection (applied after filters):
+  --keep-n N            Keep the N most recent old versions; delete the rest
+  --older-than DAYS     Delete old versions whose age exceeds DAYS days
 
 mode:
   --dry-run             Preview what would be deleted without actually deleting.
@@ -77,11 +82,14 @@ python3 prune_versions.py
 # Preview before deleting
 python3 prune_versions.py --dry-run
 
+# Keep only the 3 most recent old versions of each matched file
+python3 prune_versions.py --keep-n 3 --dry-run
+
+# Delete versions older than 90 days for all files (not just git/results)
+python3 prune_versions.py --no-git --no-results --older-than 90
+
 # Delete, reusing a previously saved scan to avoid re-fetching
 python3 prune_versions.py --from-json results.json
-
-# Also delete versions of all .csv files
-python3 prune_versions.py --ext .csv
 
 # Only git, skip results
 python3 prune_versions.py --no-results
@@ -150,5 +158,5 @@ python3 analyze_versions.py --raw-dump raw.txt
 
 - [x] `prune_versions.py` — selective pruner (git + results on by default, `--path-contains`, `--ext` for extra filters)
 - [x] Dry-run mode with summary before any deletion
-- [ ] Keep N most recent versions instead of deleting all
-- [ ] Drop versions older than X days
+- [x] Keep N most recent versions with `--keep-n`
+- [x] Drop versions older than X days with `--older-than`

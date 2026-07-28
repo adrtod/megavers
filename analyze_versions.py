@@ -18,9 +18,12 @@ from typing import Optional
 
 # ── Output line patterns ──────────────────────────────────────────────────────
 
-# FLAGS VERS SIZE DATE NAME  (e.g. "----   29         2554 2026-07-07T16:59:54 file.txt")
+# FLAGS VERS SIZE DATE [H:HANDLE] NAME
+# Handle column is present when --show-handles is passed to mega-ls.
+# Version names have a MEGA-internal #timestamp suffix that we strip.
 NODE_RE = re.compile(
-    r'^([a-z-]{4})\s+(\d+|-)\s+(\d+|-)\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s+(.+)$'
+    r'^([a-z-]{4})\s+(\d+|-)\s+(\d+|-)\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})'
+    r'\s+(?:(H:[A-Za-z0-9]+)\s+)?(.+)$'
 )
 VERSIONS_OF_RE = re.compile(r'^Versions of (.+):$')
 SECTION_RE     = re.compile(r'^(/?.+):$')
@@ -33,16 +36,17 @@ class OldVersion:
     size:        int
     mtime:       str
     version_num: int
+    handle:      str = ""   # H:XXXXXXXX, populated when scanned with --show-handles
 
 
 @dataclass
 class VersionedFile:
-    path:          str
-    name:          str
-    current_size:  int
-    current_mtime: str
+    path:           str
+    name:           str
+    current_size:   int
+    current_mtime:  str
     total_versions: int
-    old_versions:  list[OldVersion] = field(default_factory=list)
+    old_versions:   list[OldVersion] = field(default_factory=list)
 
     @property
     def version_size(self) -> int:
@@ -69,7 +73,7 @@ def check_logged_in() -> None:
 
 def fetch_raw(path: str) -> list[str]:
     r = subprocess.run(
-        ["mega-ls", "-l", "-r", "--versions",
+        ["mega-ls", "-l", "-r", "--versions", "--show-handles",
          "--time-format=ISO6081_WITH_TIME", path],
         capture_output=True, text=True,
     )
@@ -94,11 +98,11 @@ def is_decoration(line: str) -> bool:
 
 def parse(lines: list[str]) -> dict[str, VersionedFile]:
     """
-    Parse mega-ls -l -r --versions output.
+    Parse mega-ls -l -r --versions --show-handles output.
 
     Structure per directory:
       section_header:
-        file lines  (FLAGS VERS SIZE DATE NAME)
+        file lines  (FLAGS VERS SIZE DATE [H:HANDLE] NAME)
       Versions of <path>:
         version lines (current first, then old in descending order)
       [next section header]
@@ -137,7 +141,10 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
             versions_of_path = None
             continue
 
-        flags, vers_s, size_s, date, name = m.groups()
+        flags, vers_s, size_s, date, handle, name = m.groups()
+        handle = handle or ""
+        # Strip MEGA's internal version timestamp suffix (e.g. filename#1783436394)
+        name = re.sub(r'#\d+$', '', name)
         size = int(size_s) if size_s != "-" else 0
         vers = int(vers_s) if vers_s != "-" else 0
         is_dir = flags[0] == "d"
@@ -150,7 +157,9 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
                 continue
             vf = versioned.get(versions_of_path)
             if vf:
-                vf.old_versions.append(OldVersion(size=size, mtime=date, version_num=vers))
+                vf.old_versions.append(OldVersion(
+                    size=size, mtime=date, version_num=vers, handle=handle,
+                ))
             version_line_idx += 1
 
         else:
@@ -190,9 +199,9 @@ def fmt_date(iso: str) -> str:
 
 def print_report(versioned: dict[str, VersionedFile], top_n: int) -> None:
     files = list(versioned.values())
-    total_ver_bytes   = sum(f.version_size for f in files)
-    total_cur_bytes   = sum(f.current_size  for f in files)
-    total_old_count   = sum(f.old_count      for f in files)
+    total_ver_bytes = sum(f.version_size for f in files)
+    total_cur_bytes = sum(f.current_size  for f in files)
+    total_old_count = sum(f.old_count     for f in files)
 
     W = 76
     print()
@@ -242,7 +251,12 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
             "old_count":     vf.old_count,
             "version_size":  vf.version_size,
             "versions": [
-                {"size": v.size, "mtime": v.mtime, "version_num": v.version_num}
+                {
+                    "size":        v.size,
+                    "mtime":       v.mtime,
+                    "version_num": v.version_num,
+                    "handle":      v.handle,
+                }
                 for v in sorted(vf.old_versions, key=lambda v: v.mtime, reverse=True)
             ],
         }
