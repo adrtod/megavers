@@ -195,7 +195,7 @@ mega-whoami
 megavers-analyze
 
 # Analyze a specific subfolder, show top 30, save JSON
-megavers-analyze /MEGAsync/FindNOrder --top 30 --json results.json
+megavers-analyze /MEGAsync/MyFolder --top 30 --json results.json
 
 # Debug: inspect raw mega-ls output
 megavers-analyze --raw-dump raw.txt
