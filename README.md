@@ -18,12 +18,13 @@ Tools for analyzing and selectively pruning file version history in a [MEGA](htt
 Scans your MEGA account via [MEGAcmd](https://github.com/meganz/MEGAcmd) and produces a ranked report of versioning space usage.
 
 ```
-usage: megavers-analyze [-h] [--top N] [--json FILE] [--raw-dump FILE] [path]
+usage: megavers-analyze [-h] [--version] [--top N] [--json FILE] [--raw-dump FILE] [path]
 
 positional arguments:
   path           Cloud path to analyze (default: /)
 
 options:
+  --version      Show version and exit
   --top N        Number of top files to display (default: 20)
   --json FILE    Save full results as JSON
   --raw-dump FILE  Save raw mega-ls output for debugging
@@ -54,8 +55,8 @@ megavers-analyze --raw-dump raw.txt
 ============================================================================
 MEGA VERSIONING SPACE REPORT
 ============================================================================
-  Files with old versions:         1 204
-  Total old version count:         8 731
+  Files with old versions:         1204
+  Total old version count:         8731
   Space used by old versions:      12.7 GB
   Overhead vs. current file size:  26.3%
 
@@ -64,7 +65,7 @@ TOP 20 FILES BY VERSION SPACE
  VER SPACE   VERS    CUR SIZE  PATH
 ----------------------------------------------------------------------------
     3.1 GB     46    312.4 MB  /MEGAsync/Backups/project-backup.zip
-                   oldest:     2023-04-12 09:15
+                   oldest:     2023-04-12 09:15 UTC
 ...
 
 TOP 20 FILES BY VERSION COUNT
@@ -78,14 +79,16 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 ----------------------------------------------------------------------------
   V/DAY   VERS         SINCE  PATH
 ----------------------------------------------------------------------------
-  95.71    101  2026-07-27 10:24  /MEGAsync/code/repo/.git/FETCH_HEAD
-   2.20     44  2026-07-08 12:36  /MEGAsync/code/script.py
+  95.71    101  2026-07-27 10:24 UTC  /MEGAsync/code/repo/.git/FETCH_HEAD
+   2.20     44  2026-07-08 12:36 UTC  /MEGAsync/code/script.py
 ...
 ```
 
+"Overhead vs. current file size" is the ratio of old-version space to current-file space, computed only over files that have old versions — it does not include files with a single version.
+
 ### `config.toml` — Filter definitions
 
-Filters are defined in `config.toml`. Each filter has a name, an optional list of path substrings, and an optional list of extensions. Within a filter, both conditions must be satisfied (AND). Across filters, any match selects the file (OR).
+Filters are defined in `config.toml`. Each filter has a name and at least one of: a list of path substrings (`path_contains`, case-sensitive, matching MEGA's own path semantics) or a list of extensions. If both are set, both must match (AND). Across filters, any match selects the file (OR). A filter with neither `path_contains` nor `extensions` is rejected at startup, since it would otherwise match every file in the account.
 
 ```toml
 [[filter]]
@@ -104,13 +107,15 @@ Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
 ### `megavers-prune` — Version pruner
 
-Deletes old version histories for files matched by filters in `config.toml` using [MEGAcmd](https://github.com/meganz/MEGAcmd). Deletes by default — pass `--dry-run` to preview first. The current (latest) version of every file is always kept.
+Deletes old version histories for files matched by filters in `config.toml` using [MEGAcmd](https://github.com/meganz/MEGAcmd). **Only previews by default — pass `--yes` to actually delete.** The current (latest) version of every file is always kept.
+
+> **Warning:** deletion is permanent. MEGA does not keep a recycle bin for pruned versions — once deleted with `--yes`, old versions cannot be recovered. Always run without `--yes` first (or with `--dry-run`) to review what would be deleted.
 
 ```
 usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
                          [--filter NAME] [--path-contains STR] [--ext EXT]
                          [--min-version-size SIZE] [--keep-n N] [--older-than DAYS]
-                         [--dry-run] [--list-filters] [path]
+                         [--yes] [--dry-run] [--list-filters] [--version] [path]
 
 source:
   path                  Cloud path to scan (default: /)
@@ -129,30 +134,33 @@ version selection (applied after filters):
   --older-than DAYS     Delete old versions whose age exceeds DAYS days
 
 mode:
-  --dry-run             Preview what would be deleted without actually deleting.
+  --yes                 Actually delete. Without this flag, only a preview is shown.
+  --dry-run             Preview what would be deleted (the default; this flag mainly
+                        exists to make an already-explicit preview clearer).
   --list-filters        List filters defined in config and exit.
+  --version             Show version and exit
 ```
 
 **Examples:**
 
 ```bash
-# Delete with all filters from config.toml
+# Preview what would be deleted (default — nothing is deleted without --yes)
 megavers-prune
 
-# Preview before deleting
-megavers-prune --dry-run
+# Actually delete, using all filters from config.toml
+megavers-prune --yes
 
 # Run only the 'git' filter
-megavers-prune --filter git
+megavers-prune --filter git --yes
 
-# Keep only the 3 most recent old versions per matched file
-megavers-prune --keep-n 3 --dry-run
+# Preview keeping only the 3 most recent old versions per matched file
+megavers-prune --keep-n 3
 
 # Delete versions older than 90 days (all filters)
-megavers-prune --older-than 90
+megavers-prune --older-than 90 --yes
 
 # Ad-hoc: any file whose path contains 'backup'
-megavers-prune --path-contains backup
+megavers-prune --path-contains backup --yes
 
 # Reuse a previously saved scan
 megavers-prune --from-json results.json
@@ -160,7 +168,9 @@ megavers-prune --from-json results.json
 
 ## How MEGA versioning works
 
-Each time a synced file is modified, MEGA stores the previous copy as a version. `mega-ls -l` reports the total version count in the `VERS` column. With the `--versions` flag it emits a `Versions of <path>:` block after each directory listing, containing all versions in descending order (current first). The analyzer parses this structure: the first entry in each block is the live file (already counted in current size); all subsequent entries are old versions whose sizes are summed.
+Each time a synced file is modified, MEGA stores the previous copy as a version. `mega-ls -l` reports the total version count in the `VERS` column. With the `--versions` flag it emits a `Versions of <path>:` block for each file that has old versions, starting with the current version. The analyzer treats that block header as the source of truth for the file's fully-qualified path (a directory listing alone isn't enough — scanning a single file directly produces no directory header at all), skips the first (current) entry, and explicitly sorts the rest newest-first before deleting anything, rather than trusting mega-ls's own ordering.
+
+Old-version dates from MEGA are in UTC; megavers displays and compares them as such (`--older-than` cutoffs are computed in UTC too, regardless of your local timezone).
 
 ## Requirements
 
@@ -170,6 +180,14 @@ Each time a synced file is modified, MEGA stores the previous copy as a version.
 No third-party Python packages required.
 
 ## Install
+
+### megavers
+
+```bash
+pip install megavers
+# or, in an isolated environment:
+pipx install megavers
+```
 
 ### [MEGAcmd](https://github.com/meganz/MEGAcmd) (Ubuntu / Debian)
 
