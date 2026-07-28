@@ -8,12 +8,12 @@ MEGA keeps full version history for every file it syncs. Over time this accumula
 
 ## Scripts
 
-### `analyze_versions.py` — Space analyzer
+### `megavers-analyze` — Space analyzer
 
 Scans your MEGA account via MEGAcmd and produces a ranked report of versioning space usage.
 
 ```
-usage: analyze_versions.py [-h] [--top N] [--json FILE] [--raw-dump FILE] [path]
+usage: megavers-analyze [-h] [--top N] [--json FILE] [--raw-dump FILE] [path]
 
 positional arguments:
   path           Cloud path to analyze (default: /)
@@ -84,12 +84,12 @@ extensions = [".pkl", ".gz", ".png", ".csv"]   # etc.
 
 Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
-### `prune_versions.py` — Version pruner
+### `megavers-prune` — Version pruner
 
 Deletes old version histories for files matched by filters in `config.toml`. Deletes by default — pass `--dry-run` to preview first. The current (latest) version of every file is always kept.
 
 ```
-usage: prune_versions.py [-h] [--from-json FILE] [--config FILE]
+usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
                          [--filter NAME] [--path-contains STR] [--ext EXT]
                          [--min-version-size SIZE] [--keep-n N] [--older-than DAYS]
                          [--dry-run] [--list-filters] [path]
@@ -119,25 +119,25 @@ mode:
 
 ```bash
 # Delete with all filters from config.toml
-python3 prune_versions.py
+megavers-prune
 
 # Preview before deleting
-python3 prune_versions.py --dry-run
+megavers-prune --dry-run
 
 # Run only the 'git' filter
-python3 prune_versions.py --filter git
+megavers-prune --filter git
 
 # Keep only the 3 most recent old versions per matched file
-python3 prune_versions.py --keep-n 3 --dry-run
+megavers-prune --keep-n 3 --dry-run
 
 # Delete versions older than 90 days (all filters)
-python3 prune_versions.py --older-than 90
+megavers-prune --older-than 90
 
 # Ad-hoc: any file whose path contains 'backup'
-python3 prune_versions.py --path-contains backup
+megavers-prune --path-contains backup
 
 # Reuse a previously saved scan
-python3 prune_versions.py --from-json results.json
+megavers-prune --from-json results.json
 ```
 
 ## How MEGA versioning works
@@ -191,13 +191,13 @@ mega-whoami
 
 ```bash
 # Analyze entire account
-python3 analyze_versions.py
+megavers-analyze
 
 # Analyze a specific subfolder, show top 30, save JSON
-python3 analyze_versions.py /MEGAsync/FindNOrder --top 30 --json results.json
+megavers-analyze /MEGAsync/FindNOrder --top 30 --json results.json
 
 # Debug: inspect raw mega-ls output
-python3 analyze_versions.py --raw-dump raw.txt
+megavers-analyze --raw-dump raw.txt
 ```
 
 ## Roadmap
