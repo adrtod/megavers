@@ -5,17 +5,17 @@
 [![Python](https://img.shields.io/pypi/pyversions/megavers)](https://pypi.org/project/megavers/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Tools for analyzing and selectively pruning file version history in a MEGA cloud storage account.
+Tools for analyzing and selectively pruning file version history in a [MEGA](https://mega.nz) cloud storage account.
 
 ## Motivation
 
-MEGA keeps full version history for every file it syncs. Over time this accumulates silently and can consume significant storage quota. This toolset lets you see exactly how much space versions are consuming and which files are the worst offenders, before deciding what to delete.
+[MEGA](https://mega.nz) keeps full version history for every file it syncs. Over time this accumulates silently and can consume significant storage quota. This toolset lets you see exactly how much space versions are consuming and which files are the worst offenders, before deciding what to delete.
 
 ## Scripts
 
 ### `megavers-analyze` — Space analyzer
 
-Scans your MEGA account via MEGAcmd and produces a ranked report of versioning space usage.
+Scans your MEGA account via [MEGAcmd](https://github.com/meganz/MEGAcmd) and produces a ranked report of versioning space usage.
 
 ```
 usage: megavers-analyze [-h] [--top N] [--json FILE] [--raw-dump FILE] [path]
@@ -104,7 +104,7 @@ Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
 ### `megavers-prune` — Version pruner
 
-Deletes old version histories for files matched by filters in `config.toml`. Deletes by default — pass `--dry-run` to preview first. The current (latest) version of every file is always kept.
+Deletes old version histories for files matched by filters in `config.toml` using [MEGAcmd](https://github.com/meganz/MEGAcmd). Deletes by default — pass `--dry-run` to preview first. The current (latest) version of every file is always kept.
 
 ```
 usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
@@ -165,13 +165,13 @@ Each time a synced file is modified, MEGA stores the previous copy as a version.
 ## Requirements
 
 - **Python** ≥ 3.11 — uses `tomllib` from the standard library
-- **MEGAcmd** ≥ 2.5 — official MEGA CLI with version support
+- **[MEGAcmd](https://github.com/meganz/MEGAcmd)** ≥ 2.5 — official MEGA CLI with version support
 
 No third-party Python packages required.
 
 ## Install
 
-### MEGAcmd (Ubuntu / Debian)
+### [MEGAcmd](https://github.com/meganz/MEGAcmd) (Ubuntu / Debian)
 
 MEGAcmd is separate from the MEGAsync desktop client and must be installed independently:
 
@@ -192,7 +192,7 @@ sudo apt update && sudo apt install megacmd
 
 ### Log in
 
-MEGAcmd maintains its own session, independent of MEGAsync:
+MEGAcmd maintains its own session, independent of [MEGAsync](https://mega.nz/sync):
 
 ```bash
 mega-login your@email.com
