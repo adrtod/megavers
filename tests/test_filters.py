@@ -1,10 +1,15 @@
 """Tests for megavers.prune filter logic: build_filter_fn(), apply_filters(), versions_to_delete()."""
 
 import types
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from megavers.analyze import OldVersion, VersionedFile
-from megavers.prune import build_filter_fn, apply_filters, versions_to_delete, parse_size
+from megavers.prune import (
+    build_filter_fn, apply_filters, versions_to_delete, parse_size,
+    validate_filters, _non_negative_int, extension_suffix,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,9 +49,11 @@ def test_build_filter_fn_path_contains_no_match():
     fn = build_filter_fn({"path_contains": ["/.git/"]})
     assert not fn(make_vf("/docs/notes.txt"))
 
-def test_build_filter_fn_path_contains_case_insensitive():
+def test_build_filter_fn_path_contains_case_sensitive():
+    # MEGA paths are case-sensitive; a differently-cased pattern must not match.
     fn = build_filter_fn({"path_contains": ["/.GIT/"]})
-    assert fn(make_vf("/repo/.git/FETCH_HEAD"))
+    assert not fn(make_vf("/repo/.git/FETCH_HEAD"))
+    assert fn(make_vf("/repo/.GIT/FETCH_HEAD"))
 
 def test_build_filter_fn_extensions_only_pkl():
     fn = build_filter_fn({"extensions": [".pkl"]})
@@ -86,6 +93,8 @@ def test_build_filter_fn_both_and_logic_ext_fails():
     assert not fn(make_vf("/results/model.pt"))
 
 def test_build_filter_fn_empty_matches_everything():
+    # build_filter_fn() itself stays permissive; validate_filters() is the guard
+    # that rejects such a filter before it ever reaches here.
     fn = build_filter_fn({})
     assert fn(make_vf("/any/file.xyz"))
 
@@ -209,10 +218,9 @@ def test_versions_to_delete_keep_n_zero_returns_all():
     assert len(result) == 2
 
 def test_versions_to_delete_older_than_only(monkeypatch):
-    now = datetime(2025, 8, 1, 12, 0, 0)
+    now = datetime(2025, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
-        "now": staticmethod(lambda: now),
-        "fromisoformat": staticmethod(datetime.fromisoformat),
+        "now": staticmethod(lambda tz=None: now),
     }))
     vf = _vf_with_versions([
         "2025-07-25T00:00:00",  # 7 days old — keep (< 30)
@@ -226,20 +234,18 @@ def test_versions_to_delete_older_than_only(monkeypatch):
     assert "2025-01-01T00:00:00" in deleted_mtimes
 
 def test_versions_to_delete_all_newer_than_cutoff_returns_empty(monkeypatch):
-    now = datetime(2025, 8, 1, 12, 0, 0)
+    now = datetime(2025, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
-        "now": staticmethod(lambda: now),
-        "fromisoformat": staticmethod(datetime.fromisoformat),
+        "now": staticmethod(lambda tz=None: now),
     }))
     vf = _vf_with_versions(["2025-07-30T00:00:00", "2025-07-29T00:00:00"])
     result = versions_to_delete(vf, None, 30)
     assert result == []
 
 def test_versions_to_delete_both_or_logic(monkeypatch):
-    now = datetime(2025, 8, 1, 12, 0, 0)
+    now = datetime(2025, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
-        "now": staticmethod(lambda: now),
-        "fromisoformat": staticmethod(datetime.fromisoformat),
+        "now": staticmethod(lambda tz=None: now),
     }))
     # keep_n=2, older_than=30 days
     # versions (newest first): v0=recent, v1=recent, v2=old
@@ -254,10 +260,9 @@ def test_versions_to_delete_both_or_logic(monkeypatch):
     assert result[0].mtime == "2025-01-01T00:00:00"
 
 def test_versions_to_delete_both_or_logic_old_in_top_n(monkeypatch):
-    now = datetime(2025, 8, 1, 12, 0, 0)
+    now = datetime(2025, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
-        "now": staticmethod(lambda: now),
-        "fromisoformat": staticmethod(datetime.fromisoformat),
+        "now": staticmethod(lambda tz=None: now),
     }))
     # keep_n=2, older_than=30: v1 is in top-2 but older than 30 days → DELETE (OR logic)
     vf = _vf_with_versions([
@@ -291,3 +296,46 @@ def test_parse_size_float():
 
 def test_parse_size_case_insensitive():
     assert parse_size("10mb") == 10 * 1024 ** 2
+
+
+# ── extension_suffix ────────────────────────────────────────────────────────────
+
+def test_extension_suffix_plain():
+    assert extension_suffix("/data/model.pkl") == ".pkl"
+
+def test_extension_suffix_tar_gz_compound():
+    assert extension_suffix("/data/archive.tar.gz") == ".gz"
+
+def test_extension_suffix_case_insensitive():
+    assert extension_suffix("/data/MODEL.PKL") == ".pkl"
+
+def test_extension_suffix_no_extension():
+    assert extension_suffix("/data/README") == ""
+
+
+# ── validate_filters ─────────────────────────────────────────────────────────
+
+def test_validate_filters_accepts_path_contains():
+    validate_filters([{"name": "git", "path_contains": ["/.git/"]}])
+
+def test_validate_filters_accepts_extensions():
+    validate_filters([{"name": "pkl", "extensions": [".pkl"]}])
+
+def test_validate_filters_rejects_empty_filter():
+    with pytest.raises(SystemExit):
+        validate_filters([{"name": "oops"}])
+
+def test_validate_filters_rejects_unknown_key():
+    with pytest.raises(SystemExit):
+        validate_filters([{"name": "typo", "path_contain": ["/.git/"]}])
+
+
+# ── _non_negative_int ─────────────────────────────────────────────────────────
+
+def test_non_negative_int_accepts_zero_and_positive():
+    assert _non_negative_int("0") == 0
+    assert _non_negative_int("5") == 5
+
+def test_non_negative_int_rejects_negative():
+    with pytest.raises(Exception):
+        _non_negative_int("-1")

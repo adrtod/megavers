@@ -12,7 +12,7 @@ import json
 import argparse
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from megavers import __version__
 
@@ -68,8 +68,8 @@ class VersionedFile:
         """Versions per day, measured from oldest version to now."""
         if not self.old_versions or not self.oldest_mtime:
             return None
-        oldest = datetime.fromisoformat(self.oldest_mtime)
-        days = (datetime.now() - oldest).total_seconds() / 86400
+        oldest = parse_mtime(self.oldest_mtime)
+        days = (datetime.now(timezone.utc) - oldest).total_seconds() / 86400
         if days < 1:
             return None
         return self.old_count / days
@@ -242,9 +242,15 @@ def fmt_size(b: int) -> str:
     return f"{b:.1f} PB"
 
 
+def parse_mtime(iso: str) -> datetime:
+    """MEGA reports mtimes in UTC without a timezone suffix; attach it explicitly
+    so comparisons against datetime.now(timezone.utc) are correct in any locale."""
+    return datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+
+
 def fmt_date(iso: str) -> str:
     try:
-        return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M")
+        return parse_mtime(iso).strftime("%Y-%m-%d %H:%M UTC")
     except Exception:
         return iso
 

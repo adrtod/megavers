@@ -3,7 +3,7 @@
 MEGA Version Pruner
 
 Selectively deletes old file versions based on filters defined in config.toml.
-Deletes by default — pass --dry-run to preview first.
+Only previews by default — pass --yes to actually delete.
 
 Keeps the current (latest) version of every file untouched.
 """
@@ -14,13 +14,14 @@ import json
 import argparse
 import subprocess
 import tomllib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
 
 from megavers import __version__
 from megavers.analyze import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
+    parse_mtime,
 )
 
 USER_CONFIG_SEARCH_PATH = [
@@ -51,27 +52,49 @@ def load_config(path: Path | None) -> list[dict]:
     return data.get("filter", [])
 
 
+def extension_suffix(path: str) -> str:
+    """The file's extension, case-insensitive, treating .tar.gz/.tar.bz2/.tar.xz
+    as a single compound extension rather than PurePosixPath's ".gz" of ".tar.gz"."""
+    lower = path.lower()
+    for compound in (".tar.gz", ".tar.bz2", ".tar.xz"):
+        if lower.endswith(compound):
+            return "." + compound.rsplit(".", 1)[-1]
+    return PurePosixPath(lower).suffix
+
+
+FILTER_KEYS = {"name", "description", "path_contains", "extensions"}
+
+
+def validate_filters(filters: list[dict]) -> None:
+    """Reject config filters that would match every file (missing criteria) or
+    that contain a typo'd/unrecognised key — both are easy to write by accident
+    and, combined with delete-by-default semantics, expensive to get wrong."""
+    for i, f in enumerate(filters):
+        label = f.get("name") or f"filter #{i + 1}"
+        unknown = set(f) - FILTER_KEYS
+        if unknown:
+            print(f"Error: unrecognized key(s) in config filter {label!r}: "
+                  f"{sorted(unknown)}", file=sys.stderr)
+            sys.exit(1)
+        if not f.get("path_contains") and not f.get("extensions"):
+            print(f"Error: config filter {label!r} has neither 'path_contains' nor "
+                  "'extensions' set, so it would match every file. Add at least one, "
+                  "or remove the filter.", file=sys.stderr)
+            sys.exit(1)
+
+
 def build_filter_fn(f: dict):
     """Return a match function for a config filter entry."""
     path_patterns = f.get("path_contains", [])
     extensions    = {e.lower() for e in f.get("extensions", [])}
 
     def match(vf: VersionedFile) -> bool:
-        path = vf.path.lower()
-        path_ok = not path_patterns or any(p.lower() in path for p in path_patterns)
-        if not path_ok:
+        # MEGA paths are case-sensitive; match them as such.
+        if path_patterns and not any(p in vf.path for p in path_patterns):
             return False
         if not extensions:
             return True
-        # Handle double extensions like .tar.gz
-        suffix = PurePosixPath(path).suffix
-        if path.endswith(".tar.gz"):
-            suffix = ".gz"
-        elif path.endswith(".tar.bz2"):
-            suffix = ".bz2"
-        elif path.endswith(".tar.xz"):
-            suffix = ".xz"
-        return suffix in extensions
+        return extension_suffix(vf.path) in extensions
 
     return match
 
@@ -141,12 +164,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
             active_fns.append(lambda vf, p=pat: p in vf.path)
     if args.ext:
         exts = {e.lower() if e.startswith(".") else "." + e.lower() for e in args.ext}
-        def _ext_match(vf: VersionedFile, exts=exts) -> bool:
-            p = vf.path.lower()
-            if any(p.endswith(e) for e in exts if e in (".gz", ".bz2", ".xz")):
-                return True
-            return PurePosixPath(p).suffix in exts
-        active_fns.append(_ext_match)
+        active_fns.append(lambda vf, exts=exts: extension_suffix(vf.path) in exts)
 
     if not active_fns:
         print("Error: no active filters. Check your config.toml or --filter arguments.",
@@ -180,16 +198,16 @@ def versions_to_delete(vf: VersionedFile, keep_n: int | None, older_than: int | 
         # OR logic: delete if outside the top N *or* older than the cutoff.
         # Anything that fails either condition is removed.
         recent = set(id(v) for v in vf.old_versions[:keep_n])
-        cutoff = datetime.now() - timedelta(days=older_than)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than)
         return [
             v for v in vf.old_versions
-            if id(v) not in recent or datetime.fromisoformat(v.mtime) < cutoff
+            if id(v) not in recent or parse_mtime(v.mtime) < cutoff
         ]
     if keep_n is not None:
         return vf.old_versions[keep_n:]
     if older_than is not None:
-        cutoff = datetime.now() - timedelta(days=older_than)
-        return [v for v in vf.old_versions if datetime.fromisoformat(v.mtime) < cutoff]
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than)
+        return [v for v in vf.old_versions if parse_mtime(v.mtime) < cutoff]
     return list(vf.old_versions)
 
 
@@ -241,7 +259,7 @@ def print_dry_run(
             print(f"{fmt_size(vf.version_size):>10}  {vf.old_count:>5}  {vf.path}")
 
     print()
-    print("Re-run without --dry-run to permanently delete.")
+    print("Re-run with --yes to permanently delete.")
 
 
 # ── Execution ─────────────────────────────────────────────────────────────────
@@ -315,31 +333,38 @@ def _run_batched(cmd: str, items: list[str], total_bytes: int) -> bool:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def _non_negative_int(s: str) -> int:
+    v = int(s)
+    if v < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {v}")
+    return v
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prune MEGA file version histories (requires MEGAcmd). "
                     "Filters are defined in config.toml. "
-                    "Deletes by default — pass --dry-run to preview first.",
+                    "Only previews by default — pass --yes to actually delete.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
-  # Delete with all filters from config.toml
+  # Preview what would be deleted (default — nothing is deleted without --yes)
   megavers-prune
 
-  # Preview before deleting
-  megavers-prune --dry-run
+  # Actually delete, using all filters from config.toml
+  megavers-prune --yes
 
   # Run only the 'git' filter defined in config.toml
-  megavers-prune --filter git
+  megavers-prune --filter git --yes
 
-  # Keep only the 3 most recent old versions per matched file
-  megavers-prune --keep-n 3 --dry-run
+  # Preview keeping only the 3 most recent old versions per matched file
+  megavers-prune --keep-n 3
 
   # Delete versions older than 90 days (all config filters)
-  megavers-prune --older-than 90
+  megavers-prune --older-than 90 --yes
 
   # Ad-hoc: any file whose path contains 'backup'
-  megavers-prune --path-contains backup
+  megavers-prune --path-contains backup --yes
 
   # Reuse a previously saved scan
   megavers-prune --from-json results.json
@@ -368,14 +393,18 @@ examples:
                      help="Only select files where version space >= SIZE (e.g. 10MB)")
 
     sel = parser.add_argument_group("version selection (applied after filters)")
-    sel.add_argument("--keep-n", type=int, metavar="N",
+    sel.add_argument("--keep-n", type=_non_negative_int, metavar="N",
                      help="Keep the N most recent old versions; delete the rest")
-    sel.add_argument("--older-than", type=int, metavar="DAYS",
+    sel.add_argument("--older-than", type=_non_negative_int, metavar="DAYS",
                      help="Delete old versions whose age exceeds DAYS days")
 
     mode = parser.add_argument_group("mode")
+    mode.add_argument("--yes", action="store_true",
+                      help="Actually delete. Without this flag, megavers-prune only "
+                           "previews what would be deleted.")
     mode.add_argument("--dry-run", action="store_true",
-                      help="Preview what would be deleted without actually deleting.")
+                      help="Preview what would be deleted (default behavior; this flag "
+                           "is only useful to make an already-explicit preview clearer).")
     mode.add_argument("--list-filters", action="store_true",
                       help="List filters defined in config and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -384,6 +413,7 @@ examples:
 
     config_path = args.config or find_user_config()
     config_filters = load_config(config_path)
+    validate_filters(config_filters)
     config_label = str(config_path) if config_path else BUNDLED_CONFIG_LABEL
 
     if args.list_filters:
@@ -407,7 +437,7 @@ examples:
         print("No files matched the active filters.")
         return
 
-    if args.dry_run:
+    if args.dry_run or not args.yes:
         print_dry_run(selected, all_version_bytes, args.keep_n, args.older_than)
     else:
         ok = execute_prune(selected, args.keep_n, args.older_than)
