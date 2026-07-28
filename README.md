@@ -24,6 +24,12 @@ options:
   --raw-dump FILE  Save raw mega-ls output for debugging
 ```
 
+The report has three ranked tables:
+
+1. **By version space** — which files consume the most quota through old versions
+2. **By version count** — which files have the most historical snapshots
+3. **By churn rate** — which files change most frequently (versions/day), useful for spotting files that should be excluded from sync entirely
+
 **Example output:**
 
 ```
@@ -41,6 +47,21 @@ TOP 20 FILES BY VERSION SPACE
 ----------------------------------------------------------------------------
     3.1 GB     46    312.4 MB  /MEGAsync/Backups/project-backup.zip
                    oldest:     2023-04-12 09:15
+...
+
+TOP 20 FILES BY VERSION COUNT
+----------------------------------------------------------------------------
+ VERS   VER SPACE    CUR SIZE  PATH
+----------------------------------------------------------------------------
+  101      3.0 MB     39.0 KB  /MEGAsync/code/repo/.git/FETCH_HEAD
+...
+
+TOP 20 FILES BY CHURN RATE (versions/day)
+----------------------------------------------------------------------------
+  V/DAY   VERS         SINCE  PATH
+----------------------------------------------------------------------------
+  95.71    101  2026-07-27 10:24  /MEGAsync/code/repo/.git/FETCH_HEAD
+   2.20     44  2026-07-08 12:36  /MEGAsync/code/script.py
 ...
 ```
 
