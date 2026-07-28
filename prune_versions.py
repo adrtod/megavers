@@ -93,7 +93,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args) -> list[VersionedFi
     active = []
 
     # Built-in flags
-    if args.git:
+    if not args.no_git:
         active.append(FILTER_GIT["match"])
     if args.results:
         active.append(FILTER_RESULTS["match"])
@@ -107,7 +107,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args) -> list[VersionedFi
         active.append(lambda vf: PurePosixPath(vf.path).suffix in exts)
 
     if not active:
-        print("Error: no filters specified. Use --git, --results, --path-contains, or --ext.",
+        print("Error: no filters active. All built-in filters were disabled and none added.",
               file=sys.stderr)
         sys.exit(1)
 
@@ -203,24 +203,27 @@ def main() -> None:
                     "Dry-run by default — pass --execute to delete.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-filters (combinable, OR logic):
-  --git              files inside .git/ directories
+filters (combinable, OR logic — git is on by default):
+  --no-git           disable the .git/ filter
   --results          binary output files under results/sandbox/outputs dirs
   --path-contains S  path contains the given string (repeatable)
   --ext EXT          file extension, e.g. .pkl  (repeatable)
 
 examples:
-  # Preview what --git would remove
-  python3 prune_versions.py --git
+  # Preview .git/ versions (default behaviour)
+  python3 prune_versions.py
 
-  # Preview both filters, only files with >50 MB of old versions
-  python3 prune_versions.py --git --results --min-version-size 50MB
+  # Also include result files, only if version overhead > 50 MB
+  python3 prune_versions.py --results --min-version-size 50MB
 
-  # Delete versions matched by --git, using a previously saved scan
-  python3 prune_versions.py --git --from-json results.json --execute
+  # Delete, reusing a previously saved scan
+  python3 prune_versions.py --results --from-json results.json --execute
 
-  # Delete versions of all .pkl files
+  # Delete versions of all .pkl files (git filter still applies too)
   python3 prune_versions.py --ext .pkl --execute
+
+  # Only .pkl files, skip git
+  python3 prune_versions.py --no-git --ext .pkl --execute
 """,
     )
 
@@ -234,8 +237,8 @@ examples:
 
     # Filters
     flt = parser.add_argument_group("filters")
-    flt.add_argument("--git", action="store_true",
-                     help="Select files inside .git/ directories")
+    flt.add_argument("--no-git", action="store_true",
+                     help="Exclude files inside .git/ directories (git filter is on by default)")
     flt.add_argument("--results", action="store_true",
                      help="Select binary result/output files under results/ or sandbox/ dirs")
     flt.add_argument("--path-contains", metavar="STR", action="append",
