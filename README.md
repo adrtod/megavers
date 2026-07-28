@@ -50,22 +50,22 @@ Deletes old version histories for files matched by one or more filters. Always d
 
 ```
 usage: prune_versions.py [-h] [--from-json FILE]
-                         [--git] [--results] [--path-contains STR] [--ext EXT]
+                         [--no-git] [--no-results] [--path-contains STR] [--ext EXT]
                          [--min-version-size SIZE] [--execute] [path]
 
 source:
-  path                Cloud path to scan (default: /)
-  --from-json FILE    Load from analyze_versions.py --json output (skips re-scanning)
+  path                  Cloud path to scan (default: /)
+  --from-json FILE      Load from analyze_versions.py --json output (skips re-scanning)
 
 filters (combinable, OR logic — git and results are on by default):
-  --no-git            Disable the .git/ filter
-  --no-results        Disable the binary result/output files filter
-  --path-contains S   Path contains the given string (repeatable)
-  --ext EXT           File extension, e.g. .pkl (repeatable)
-  --min-version-size  Only select files where version space >= SIZE (e.g. 50MB)
+  --no-git              Disable the .git/ filter
+  --no-results          Disable the binary result/output files filter
+  --path-contains STR   Select files whose path contains STR (repeatable)
+  --ext EXT             Select files with this extension, e.g. .pkl (repeatable)
+  --min-version-size SIZE  Only select files where version space >= SIZE (e.g. 50MB)
 
 mode:
-  --execute           Actually delete. Without this flag: dry-run only.
+  --execute             Actually delete. Without this flag: dry-run only.
 ```
 
 **Examples:**
@@ -148,7 +148,7 @@ python3 analyze_versions.py --raw-dump raw.txt
 
 ## Roadmap
 
-- [x] `prune_versions.py` — selective pruner with `--git`, `--results`, `--path-contains`, `--ext` filters
+- [x] `prune_versions.py` — selective pruner (git + results on by default, `--path-contains`, `--ext` for extra filters)
 - [x] Dry-run mode with summary before any deletion
 - [ ] Keep N most recent versions instead of deleting all
 - [ ] Drop versions older than X days
