@@ -57,9 +57,9 @@ source:
   path                Cloud path to scan (default: /)
   --from-json FILE    Load from analyze_versions.py --json output (skips re-scanning)
 
-filters (combinable, OR logic — git is on by default):
+filters (combinable, OR logic — git and results are on by default):
   --no-git            Disable the .git/ filter
-  --results           Binary output files (.pkl, .tar.gz, .png …) under results/ or sandbox/ dirs
+  --no-results        Disable the binary result/output files filter
   --path-contains S   Path contains the given string (repeatable)
   --ext EXT           File extension, e.g. .pkl (repeatable)
   --min-version-size  Only select files where version space >= SIZE (e.g. 50MB)
@@ -71,20 +71,20 @@ mode:
 **Examples:**
 
 ```bash
-# Preview .git/ versions (default behaviour)
+# Preview default filters (git + results)
 python3 prune_versions.py
 
-# Also include result files, only if version overhead > 50 MB
-python3 prune_versions.py --results --min-version-size 50MB
+# Delete with default filters
+python3 prune_versions.py --execute
 
 # Delete, reusing a previously saved scan to avoid re-fetching
-python3 prune_versions.py --results --from-json results.json --execute
+python3 prune_versions.py --from-json results.json --execute
 
-# Delete versions of all .pkl files (git filter still applies too)
-python3 prune_versions.py --ext .pkl --execute
+# Also delete versions of all .csv files
+python3 prune_versions.py --ext .csv --execute
 
-# Only .pkl files, skip git
-python3 prune_versions.py --no-git --ext .pkl --execute
+# Only git, skip results
+python3 prune_versions.py --no-results --execute
 ```
 
 ## How MEGA versioning works

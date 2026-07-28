@@ -95,7 +95,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args) -> list[VersionedFi
     # Built-in flags
     if not args.no_git:
         active.append(FILTER_GIT["match"])
-    if args.results:
+    if not args.no_results:
         active.append(FILTER_RESULTS["match"])
 
     # Generic flags
@@ -203,27 +203,27 @@ def main() -> None:
                     "Dry-run by default — pass --execute to delete.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-filters (combinable, OR logic — git is on by default):
+filters (combinable, OR logic — git and results are on by default):
   --no-git           disable the .git/ filter
-  --results          binary output files under results/sandbox/outputs dirs
+  --no-results       disable the binary result/output files filter
   --path-contains S  path contains the given string (repeatable)
   --ext EXT          file extension, e.g. .pkl  (repeatable)
 
 examples:
-  # Preview .git/ versions (default behaviour)
+  # Preview default filters (git + results)
   python3 prune_versions.py
 
-  # Also include result files, only if version overhead > 50 MB
-  python3 prune_versions.py --results --min-version-size 50MB
+  # Delete with default filters
+  python3 prune_versions.py --execute
 
   # Delete, reusing a previously saved scan
-  python3 prune_versions.py --results --from-json results.json --execute
+  python3 prune_versions.py --from-json results.json --execute
 
-  # Delete versions of all .pkl files (git filter still applies too)
-  python3 prune_versions.py --ext .pkl --execute
+  # Delete versions of all .csv files too
+  python3 prune_versions.py --ext .csv --execute
 
-  # Only .pkl files, skip git
-  python3 prune_versions.py --no-git --ext .pkl --execute
+  # Only git, skip results
+  python3 prune_versions.py --no-results --execute
 """,
     )
 
@@ -239,8 +239,8 @@ examples:
     flt = parser.add_argument_group("filters")
     flt.add_argument("--no-git", action="store_true",
                      help="Exclude files inside .git/ directories (git filter is on by default)")
-    flt.add_argument("--results", action="store_true",
-                     help="Select binary result/output files under results/ or sandbox/ dirs")
+    flt.add_argument("--no-results", action="store_true",
+                     help="Exclude binary result/output files under results/ or sandbox/ dirs (on by default)")
     flt.add_argument("--path-contains", metavar="STR", action="append",
                      help="Select files whose path contains STR (repeatable)")
     flt.add_argument("--ext", metavar="EXT", action="append",
