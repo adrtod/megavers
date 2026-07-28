@@ -105,6 +105,7 @@ python3 analyze_versions.py --raw-dump raw.txt
 
 ## Roadmap
 
-- [ ] `prune_versions.py` — selective pruner (keep N most recent, or drop versions older than X days)
-- [ ] Dry-run mode with summary before any deletion
-- [ ] Filter by path / file extension
+- [x] `prune_versions.py` — selective pruner with `--git`, `--results`, `--path-contains`, `--ext` filters
+- [x] Dry-run mode with summary before any deletion
+- [ ] Keep N most recent versions instead of deleting all
+- [ ] Drop versions older than X days

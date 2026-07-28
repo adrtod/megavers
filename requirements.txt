@@ -1,2 +1,0 @@
-# No Python dependencies — the analyzer uses MEGAcmd (mega-ls) via subprocess.
-# Install MEGAcmd from: https://mega.nz/cmd  or  sudo apt install megacmd
