@@ -44,26 +44,46 @@ TOP 20 FILES BY VERSION SPACE
 ...
 ```
 
+### `config.toml` — Filter definitions
+
+Filters are defined in `config.toml`. Each filter has a name, an optional list of path substrings, and an optional list of extensions. Within a filter, both conditions must be satisfied (AND). Across filters, any match selects the file (OR).
+
+```toml
+[[filter]]
+name = "git"
+description = "Git repository internals"
+path_contains = ["/.git/"]
+
+[[filter]]
+name = "results"
+description = "Binary output files under result/sandbox directories"
+path_contains = ["/results/", "/sandbox/", "/outputs/"]
+extensions = [".pkl", ".gz", ".png", ".csv"]   # etc.
+```
+
+Add, remove, or modify filters freely — the tool has no hardcoded logic.
+
 ### `prune_versions.py` — Version pruner
 
-Deletes old version histories for files matched by one or more filters. Always dry-runs by default — pass `--execute` to actually delete. The current (latest) version of every file is always kept.
+Deletes old version histories for files matched by filters in `config.toml`. Deletes by default — pass `--dry-run` to preview first. The current (latest) version of every file is always kept.
 
 ```
-usage: prune_versions.py [-h] [--from-json FILE]
-                         [--no-git] [--no-results] [--path-contains STR] [--ext EXT]
+usage: prune_versions.py [-h] [--from-json FILE] [--config FILE]
+                         [--filter NAME] [--path-contains STR] [--ext EXT]
                          [--min-version-size SIZE] [--keep-n N] [--older-than DAYS]
-                         [--dry-run] [path]
+                         [--dry-run] [--list-filters] [path]
 
 source:
   path                  Cloud path to scan (default: /)
   --from-json FILE      Load from analyze_versions.py --json output (skips re-scanning)
+  --config FILE         Config file path (default: config.toml next to this script)
 
-filters (combinable, OR logic — git and results are on by default):
-  --no-git              Disable the .git/ filter
-  --no-results          Disable the binary result/output files filter
-  --path-contains STR   Select files whose path contains STR (repeatable)
-  --ext EXT             Select files with this extension, e.g. .pkl (repeatable)
-  --min-version-size SIZE  Only select files where version space >= SIZE (e.g. 50MB)
+filters:
+  --filter NAME         Activate only this config filter by name (repeatable;
+                        default: all filters in config)
+  --path-contains STR   Ad-hoc: select files whose path contains STR (repeatable)
+  --ext EXT             Ad-hoc: select files with this extension (repeatable)
+  --min-version-size SIZE  Only select files where version space >= SIZE (e.g. 10MB)
 
 version selection (applied after filters):
   --keep-n N            Keep the N most recent old versions; delete the rest
@@ -71,28 +91,32 @@ version selection (applied after filters):
 
 mode:
   --dry-run             Preview what would be deleted without actually deleting.
+  --list-filters        List filters defined in config and exit.
 ```
 
 **Examples:**
 
 ```bash
-# Delete with default filters (git + results)
+# Delete with all filters from config.toml
 python3 prune_versions.py
 
 # Preview before deleting
 python3 prune_versions.py --dry-run
 
-# Keep only the 3 most recent old versions of each matched file
+# Run only the 'git' filter
+python3 prune_versions.py --filter git
+
+# Keep only the 3 most recent old versions per matched file
 python3 prune_versions.py --keep-n 3 --dry-run
 
-# Delete versions older than 90 days for all files (not just git/results)
-python3 prune_versions.py --no-git --no-results --older-than 90
+# Delete versions older than 90 days (all filters)
+python3 prune_versions.py --older-than 90
 
-# Delete, reusing a previously saved scan to avoid re-fetching
+# Ad-hoc: any file whose path contains 'backup'
+python3 prune_versions.py --path-contains backup
+
+# Reuse a previously saved scan
 python3 prune_versions.py --from-json results.json
-
-# Only git, skip results
-python3 prune_versions.py --no-results
 ```
 
 ## How MEGA versioning works
@@ -156,7 +180,7 @@ python3 analyze_versions.py --raw-dump raw.txt
 
 ## Roadmap
 
-- [x] `prune_versions.py` — selective pruner (git + results on by default, `--path-contains`, `--ext` for extra filters)
+- [x] `prune_versions.py` — selective pruner driven by `config.toml`, with `--filter`, `--path-contains`, `--ext` overrides
 - [x] Dry-run mode with summary before any deletion
 - [x] Keep N most recent versions with `--keep-n`
 - [x] Drop versions older than X days with `--older-than`

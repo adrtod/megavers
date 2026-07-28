@@ -1,0 +1,28 @@
+# mega-version-cleaner config
+#
+# Define named filters below. All filters are active by default.
+# Use --filter NAME on the CLI to activate only specific ones.
+#
+# Filter matching logic (within a single filter):
+#   - path_contains: file path must contain at least one of these strings
+#   - extensions:    file extension must be in this list
+#   - If both are set: file must satisfy BOTH conditions (AND).
+#   - If only one is set: only that condition is checked.
+#
+# Across filters: OR logic — a file is selected if it matches ANY active filter.
+
+[[filter]]
+name = "git"
+description = "Git repository internals (pack files, loose objects, index, etc.)"
+path_contains = ["/.git/"]
+
+[[filter]]
+name = "results"
+description = "Binary output files under result/sandbox/output directories"
+path_contains = ["/results/", "/sandbox/", "/outputs/", "/out/", "/artifacts/"]
+extensions = [
+    ".pkl", ".gz", ".zip", ".tar",
+    ".png", ".jpg", ".jpeg", ".svg",
+    ".bin", ".h5", ".hdf5", ".npy", ".npz",
+    ".pt", ".pth", ".mat", ".csv", ".parquet",
+]

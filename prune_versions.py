@@ -2,7 +2,7 @@
 """
 MEGA Version Pruner
 
-Selectively deletes old file versions based on filters.
+Selectively deletes old file versions based on filters defined in config.toml.
 Deletes by default — pass --dry-run to preview first.
 
 Keeps the current (latest) version of every file untouched.
@@ -13,43 +13,48 @@ import sys
 import json
 import argparse
 import subprocess
+import tomllib
 from datetime import datetime, timedelta
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from analyze_versions import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
 )
 
+DEFAULT_CONFIG = Path(__file__).parent / "config.toml"
 
-# ── Built-in filter definitions ───────────────────────────────────────────────
 
-FILTER_GIT = dict(
-    name="git",
-    description="files inside .git/ directories",
-    match=lambda vf: "/.git/" in vf.path,
-)
+# ── Config loading ────────────────────────────────────────────────────────────
 
-_RESULT_EXTS = {
-    ".pkl", ".gz", ".zip", ".tar",
-    ".png", ".jpg", ".jpeg", ".svg",
-    ".bin", ".h5", ".hdf5", ".npy", ".npz",
-    ".pt", ".pth", ".mat", ".csv", ".parquet",
-}
+def load_config(path: Path) -> list[dict]:
+    if not path.exists():
+        print(f"Error: config file not found: {path}", file=sys.stderr)
+        print("Create a config.toml next to this script to define filters.", file=sys.stderr)
+        sys.exit(1)
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+    return data.get("filter", [])
 
-def _is_result(vf: VersionedFile) -> bool:
-    path = vf.path.lower()
-    parts = set(PurePosixPath(path).parts)
-    in_results_dir = bool(parts & {"results", "sandbox", "outputs", "out", "artifacts"})
-    suffix = PurePosixPath(path).suffix
-    if path.endswith(".tar.gz") or path.endswith(".tar.bz2"):
-        suffix = ".gz"
-    return in_results_dir and suffix in _RESULT_EXTS
 
-FILTER_RESULTS = dict(
-    name="results",
-    description="binary result/output files (.pkl, .tar.gz, .png …) under results/ dirs",
-    match=_is_result,
-)
+def build_filter_fn(f: dict):
+    """Return a match function for a config filter entry."""
+    path_patterns = f.get("path_contains", [])
+    extensions    = {e.lower() for e in f.get("extensions", [])}
+
+    def match(vf: VersionedFile) -> bool:
+        path = vf.path.lower()
+        path_ok = not path_patterns or any(p.lower() in path for p in path_patterns)
+        if not path_ok:
+            return False
+        if not extensions:
+            return True
+        # Handle double extensions like .tar.gz
+        suffix = PurePosixPath(path).suffix
+        if path.endswith(".tar.gz") or path.endswith(".tar.bz2"):
+            suffix = ".gz"
+        return suffix in extensions
+
+    return match
 
 
 # ── Scanning / loading ────────────────────────────────────────────────────────
@@ -86,26 +91,32 @@ def load_versioned(args) -> dict[str, VersionedFile]:
 
 # ── Filtering ─────────────────────────────────────────────────────────────────
 
-def apply_filters(versioned: dict[str, VersionedFile], args) -> list[VersionedFile]:
-    active = []
+def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: list[dict]) \
+        -> list[VersionedFile]:
+    active_fns = []
 
-    if not args.no_git:
-        active.append(FILTER_GIT["match"])
-    if not args.no_results:
-        active.append(FILTER_RESULTS["match"])
+    # Config-defined filters
+    requested = set(args.filter) if args.filter else None
+    for f in config_filters:
+        name = f.get("name", "")
+        if requested is None or name in requested:
+            active_fns.append(build_filter_fn(f))
+
+    # Ad-hoc CLI filters
     if args.path_contains:
         for pat in args.path_contains:
-            active.append(lambda vf, p=pat: p in vf.path)
+            active_fns.append(lambda vf, p=pat: p in vf.path)
     if args.ext:
-        exts = {e if e.startswith(".") else "." + e for e in args.ext}
-        active.append(lambda vf: PurePosixPath(vf.path).suffix in exts)
+        exts = {e.lower() if e.startswith(".") else "." + e.lower() for e in args.ext}
+        active_fns.append(lambda vf: PurePosixPath(vf.path.lower()).suffix in exts)
 
-    if not active:
-        print("Error: no filters active. All built-in filters were disabled and none added.",
+    if not active_fns:
+        print("Error: no active filters. Check your config.toml or --filter arguments.",
               file=sys.stderr)
         sys.exit(1)
 
-    selected = [vf for vf in versioned.values() if any(f(vf) for f in active)]
+    # OR logic across all active filters
+    selected = [vf for vf in versioned.values() if any(fn(vf) for fn in active_fns)]
 
     if args.min_version_size:
         threshold = parse_size(args.min_version_size)
@@ -123,29 +134,23 @@ def parse_size(s: str) -> int:
     return int(value * {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}[unit])
 
 
-# ── Version selection (for --keep-n / --older-than) ───────────────────────────
+# ── Version selection (--keep-n / --older-than) ───────────────────────────────
 
 def versions_to_delete(vf: VersionedFile, keep_n: int | None, older_than: int | None) \
         -> list[OldVersion]:
-    """
-    Return the subset of old versions that should be deleted for this file.
-    Versions are ordered most-recent-first (as returned by mega-ls --versions).
-    """
     if keep_n is not None and older_than is not None:
-        # Both: keep the N most recent AND drop the age filter on those kept ones
         recent = set(id(v) for v in vf.old_versions[:keep_n])
         cutoff = datetime.now() - timedelta(days=older_than)
         return [
             v for v in vf.old_versions
-            if id(v) not in recent
-            or datetime.fromisoformat(v.mtime) < cutoff
+            if id(v) not in recent or datetime.fromisoformat(v.mtime) < cutoff
         ]
     if keep_n is not None:
         return vf.old_versions[keep_n:]
     if older_than is not None:
         cutoff = datetime.now() - timedelta(days=older_than)
         return [v for v in vf.old_versions if datetime.fromisoformat(v.mtime) < cutoff]
-    return list(vf.old_versions)   # delete all old versions
+    return list(vf.old_versions)
 
 
 # ── Dry-run report ────────────────────────────────────────────────────────────
@@ -157,7 +162,7 @@ def print_dry_run(
     older_than: int | None,
 ) -> None:
     rows = [(vf, versions_to_delete(vf, keep_n, older_than)) for vf in selected]
-    rows = [(vf, vs) for vf, vs in rows if vs]   # skip files with nothing to delete
+    rows = [(vf, vs) for vf, vs in rows if vs]
 
     total_bytes = sum(sum(v.size for v in vs) for _, vs in rows)
     total_count = sum(len(vs) for _, vs in rows)
@@ -173,14 +178,12 @@ def print_dry_run(
         print(f"  % of total version space:   {total_bytes / all_version_bytes * 100:.1f}%")
     print()
 
-    selective = keep_n is not None or older_than is not None
-    if selective:
+    if keep_n is not None or older_than is not None:
         print(f"{'DELETE':>6}  {'KEEP':>4}  {'RECOVER':>9}  PATH")
         print("-" * 72)
         for vf, to_del in sorted(rows, key=lambda r: sum(v.size for v in r[1]), reverse=True):
             kept = vf.old_count - len(to_del)
-            size = sum(v.size for v in to_del)
-            print(f"{len(to_del):>6}  {kept:>4}  {fmt_size(size):>9}  {vf.path}")
+            print(f"{len(to_del):>6}  {kept:>4}  {fmt_size(sum(v.size for v in to_del)):>9}  {vf.path}")
     else:
         print(f"{'VER SPACE':>10}  {'VERS':>5}  PATH")
         print("-" * 72)
@@ -200,18 +203,13 @@ def execute_prune(
     keep_n: int | None,
     older_than: int | None,
 ) -> None:
-    selective = keep_n is not None or older_than is not None
-
-    if not selective:
-        # Fast path: mega-deleteversions removes all old versions in one call per file
+    if keep_n is None and older_than is None:
         total = sum(vf.version_size for vf in selected)
         print(f"\nDeleting all old versions for {len(selected)} files "
               f"({fmt_size(total)} to recover) …")
-        paths = [vf.path for vf in selected]
-        _run_batched("mega-deleteversions", ["-f"], paths, total, len(selected), "files")
-
+        _run_batched("mega-deleteversions", ["-f"],
+                     [vf.path for vf in selected], total, len(selected), "files")
     else:
-        # Selective path: collect individual version handles and delete with mega-rm
         rows = [(vf, versions_to_delete(vf, keep_n, older_than)) for vf in selected]
         rows = [(vf, vs) for vf, vs in rows if vs]
 
@@ -264,29 +262,30 @@ def _run_batched(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prune MEGA file version histories (requires MEGAcmd). "
+                    "Filters are defined in config.toml. "
                     "Deletes by default — pass --dry-run to preview first.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-filters (combinable, OR logic — git and results are on by default):
-  --no-git           disable the .git/ filter
-  --no-results       disable the binary result/output files filter
-  --path-contains S  path contains the given string (repeatable)
-  --ext EXT          file extension, e.g. .pkl (repeatable)
-
 examples:
-  # Delete with default filters (git + results)
+  # Delete with all filters from config.toml
   python3 prune_versions.py
 
   # Preview before deleting
   python3 prune_versions.py --dry-run
 
-  # Keep only the 3 most recent old versions of each matched file
+  # Run only the 'git' filter defined in config.toml
+  python3 prune_versions.py --filter git
+
+  # Keep only the 3 most recent old versions per matched file
   python3 prune_versions.py --keep-n 3 --dry-run
 
-  # Drop versions older than 90 days across all files
-  python3 prune_versions.py --no-git --no-results --ext "" --older-than 90
+  # Delete versions older than 90 days (all config filters)
+  python3 prune_versions.py --older-than 90
 
-  # Delete, reusing a previously saved scan
+  # Ad-hoc: any file whose path contains 'backup'
+  python3 prune_versions.py --path-contains backup
+
+  # Reuse a previously saved scan
   python3 prune_versions.py --from-json results.json
 """,
     )
@@ -295,18 +294,18 @@ examples:
     src.add_argument("path", nargs="?", default="/",
                      help="Cloud path to scan (default: /)")
     src.add_argument("--from-json", metavar="FILE",
-                     help="Load versioned-file list from analyze_versions.py --json output "
-                          "(skips re-scanning)")
+                     help="Load from analyze_versions.py --json output (skips re-scanning)")
+    src.add_argument("--config", metavar="FILE", type=Path, default=DEFAULT_CONFIG,
+                     help=f"Config file (default: {DEFAULT_CONFIG})")
 
     flt = parser.add_argument_group("filters")
-    flt.add_argument("--no-git", action="store_true",
-                     help="Disable the .git/ filter (on by default)")
-    flt.add_argument("--no-results", action="store_true",
-                     help="Disable the binary result/output files filter (on by default)")
+    flt.add_argument("--filter", metavar="NAME", action="append",
+                     help="Activate only this config filter by name (repeatable; "
+                          "default: all filters in config)")
     flt.add_argument("--path-contains", metavar="STR", action="append",
-                     help="Select files whose path contains STR (repeatable)")
+                     help="Ad-hoc: select files whose path contains STR (repeatable)")
     flt.add_argument("--ext", metavar="EXT", action="append",
-                     help="Select files with this extension, e.g. .pkl (repeatable)")
+                     help="Ad-hoc: select files with this extension, e.g. .pkl (repeatable)")
     flt.add_argument("--min-version-size", metavar="SIZE",
                      help="Only select files where version space >= SIZE (e.g. 10MB)")
 
@@ -319,17 +318,31 @@ examples:
     mode = parser.add_argument_group("mode")
     mode.add_argument("--dry-run", action="store_true",
                       help="Preview what would be deleted without actually deleting.")
+    mode.add_argument("--list-filters", action="store_true",
+                      help="List filters defined in config and exit.")
 
     args = parser.parse_args()
 
+    config_filters = load_config(args.config)
+
+    if args.list_filters:
+        print(f"Filters in {args.config}:")
+        for f in config_filters:
+            print(f"  [{f['name']}]  {f.get('description', '')}")
+            if f.get("path_contains"):
+                print(f"    path_contains: {f['path_contains']}")
+            if f.get("extensions"):
+                print(f"    extensions:    {f['extensions']}")
+        return
+
     check_logged_in()
     versioned = load_versioned(args)
-    selected  = apply_filters(versioned, args)
+    selected  = apply_filters(versioned, args, config_filters)
 
     all_version_bytes = sum(vf.version_size for vf in versioned.values())
 
     if not selected:
-        print("No files matched the given filters.")
+        print("No files matched the active filters.")
         return
 
     if args.dry_run:
