@@ -3,9 +3,9 @@
 ## Distribution
 
 - [x] `pyproject.toml` — package metadata, `mega-analyze` and `mega-prune` CLI entry points
-- [x] Config file lookup: current dir → `~/.config/mega-version-cleaner/config.toml` → bundled default
+- [x] Config file lookup: current dir → `~/.config/megavers/config.toml` → bundled default
 - [ ] Update GitHub URL in `pyproject.toml` once repo is created
-- [ ] Publish to PyPI so users can `pip install mega-version-cleaner`
+- [ ] Publish to PyPI so users can `pip install megavers`
 
 ## Robustness
 

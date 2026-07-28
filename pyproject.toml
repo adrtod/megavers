@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mega-version-cleaner"
+name = "megavers"
 version = "0.1.0"
 description = "Analyze and prune file version history in MEGA cloud storage"
 readme = "README.md"
@@ -29,7 +29,7 @@ classifiers = [
 # No Python dependencies — MEGAcmd must be installed separately.
 
 [project.urls]
-Repository = "https://github.com/atodeschini/mega-version-cleaner"
+Repository = "https://github.com/atodeschini/megavers"
 
 [project.scripts]
 megavers-analyze = "analyze_versions:main"

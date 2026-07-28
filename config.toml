@@ -1,4 +1,4 @@
-# mega-version-cleaner config
+# megavers config
 #
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.

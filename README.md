@@ -1,4 +1,4 @@
-# mega-version-cleaner
+# megavers
 
 Tools for analyzing and selectively pruning file version history in a MEGA cloud storage account.
 

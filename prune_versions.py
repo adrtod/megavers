@@ -25,7 +25,7 @@ BUNDLED_CONFIG = Path(__file__).parent / "config.toml"
 
 CONFIG_SEARCH_PATH = [
     Path.cwd() / "config.toml",
-    Path.home() / ".config" / "mega-version-cleaner" / "config.toml",
+    Path.home() / ".config" / "megavers" / "config.toml",
     BUNDLED_CONFIG,
 ]
 
@@ -317,7 +317,7 @@ examples:
                      help="Load from analyze_versions.py --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
                      help="Config file path. Default search order: "
-                          "./config.toml → ~/.config/mega-version-cleaner/config.toml "
+                          "./config.toml → ~/.config/megavers/config.toml "
                           "→ bundled default")
 
     flt = parser.add_argument_group("filters")
