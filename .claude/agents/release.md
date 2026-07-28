@@ -16,26 +16,32 @@ You handle the full release workflow for the megavers project at /media/adrien/d
 
 2. **Determine the new version**
    - Read the current version from `pyproject.toml` (`version = "X.Y.Z"`)
-   - Ask the user for the new version if not already specified, following semver:
+   - If this version has never been tagged (`git tag -l "v<current>"` is empty) and
+     `CHANGELOG.md` already documents it as unreleased, that's the version to publish
+     as-is — do not bump it.
+   - Otherwise ask the user for the new version if not already specified, following semver:
      - patch (bug fixes only)
      - minor (new features, backward-compatible)
      - major (breaking changes)
 
-3. **Update `pyproject.toml`**
+3. **Update `pyproject.toml`** (only if bumping)
    - Set `version = "<new>"` under `[project]`
 
-4. **Update `CHANGELOG.md`**
+4. **Update `CHANGELOG.md`** (only if bumping, or if the existing entry needs a date)
    - Add a new `## [<new>] — <YYYY-MM-DD>` section at the top (below the `# Changelog` heading)
    - Summarise changes since the last release by reading `git log <prev_tag>..HEAD --oneline`
+     (if there is no previous tag, this is the first release — summarize from the start
+     of history, or just confirm the existing changelog entry is accurate)
    - Group entries under `### Added`, `### Fixed`, `### Changed` as appropriate
 
-5. **Update `analyze_versions.py` fallback version**
-   - Find the `__version__ = "X.Y.Z"` fallback in the `except PackageNotFoundError` block
-   - Update it to match the new version
+5. **Version is single-sourced via `importlib.metadata`**
+   - `megavers/__init__.py` reads `__version__` from the installed package metadata
+     (falling back to `"0.0.0+dev"` only when not installed) — there is no per-file
+     version string to edit elsewhere.
 
-6. **Commit the release**
+6. **Commit the release** (only if `pyproject.toml` or `CHANGELOG.md` changed)
    ```bash
-   git add pyproject.toml CHANGELOG.md analyze_versions.py
+   git add pyproject.toml CHANGELOG.md
    git commit -m "Release <new>"
    ```
 
@@ -63,7 +69,7 @@ You handle the full release workflow for the megavers project at /media/adrien/d
 
 10. **Verify the live package**
     ```bash
-    pip install --quiet megavers=<new>
+    pip install --quiet megavers==<new>
     megavers-analyze --version
     megavers-prune --version
     ```
