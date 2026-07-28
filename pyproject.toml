@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mega-version-cleaner"
+version = "0.1.0"
+description = "Analyze and prune file version history in MEGA cloud storage"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Adrien Todeschini", email = "adrien.todeschini@findnorder.com"},
+]
+keywords = ["mega", "cloud", "storage", "versioning", "cleanup"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Archiving :: Backup",
+    "Topic :: Utilities",
+]
+
+# No Python dependencies — MEGAcmd must be installed separately.
+
+[project.urls]
+Repository = "https://github.com/atodeschini/mega-version-cleaner"
+
+[project.scripts]
+mega-analyze = "analyze_versions:main"
+mega-prune   = "prune_versions:main"
+
+[tool.setuptools]
+py-modules = ["analyze_versions", "prune_versions"]
