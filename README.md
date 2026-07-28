@@ -201,9 +201,3 @@ megavers-analyze /MEGAsync/FindNOrder --top 30 --json results.json
 megavers-analyze --raw-dump raw.txt
 ```
 
-## Roadmap
-
-- [x] `megavers-prune` — selective pruner driven by `config.toml`, with `--filter`, `--path-contains`, `--ext` overrides
-- [x] Dry-run mode with summary before any deletion
-- [x] Keep N most recent versions with `--keep-n`
-- [x] Drop versions older than X days with `--older-than`
