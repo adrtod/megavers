@@ -32,7 +32,7 @@ classifiers = [
 test = ["pytest>=8"]
 
 [project.urls]
-Repository = "https://github.com/atodeschini/megavers"
+Repository = "https://github.com/adrtod/megavers"
 
 [project.scripts]
 megavers-analyze = "analyze_versions:main"
