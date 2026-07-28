@@ -1,10 +1,10 @@
 # megavers config
 #
 # This is the bundled default, used only when no config.toml is found in the
-# current directory or in ~/.config/megavers/config.toml. It ships with one
-# generally-applicable filter active (git internals) and one commented-out
-# example for a more workflow-specific case. To customize, copy this file to
-# ~/.config/megavers/config.toml and edit it there.
+# current directory or in ~/.config/megavers/config.toml. It ships with a few
+# generally-applicable filters active (git internals, OS/editor junk files)
+# and one commented-out example for a more workflow-specific case. To
+# customize, copy this file to ~/.config/megavers/config.toml and edit it there.
 #
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.
@@ -24,6 +24,21 @@
 name = "git"
 description = "Git repository internals (pack files, loose objects, index, etc.)"
 path_contains = ["/.git/"]
+
+[[filter]]
+name = "os-junk"
+description = "OS-generated metadata files (macOS Finder, Windows Explorer)"
+path_contains = ["/.DS_Store", "/Thumbs.db", "/desktop.ini"]
+
+[[filter]]
+name = "editor-swap"
+description = "Editor swap files (e.g. Vim)"
+extensions = [".swp"]
+
+[[filter]]
+name = "office-locks"
+description = "Microsoft Office lock files, created while a document is open"
+path_contains = ["/~$"]
 
 # Example: binary output files under result/sandbox/output directories
 # [[filter]]
