@@ -87,10 +87,11 @@ def test_find_user_config_prefers_cwd_over_home(tmp_path, monkeypatch):
     assert found == cwd / "config.toml"
 
 def test_load_config_bundled_fallback_when_path_is_none():
-    # The bundled default ships with no active filters (they're commented-out
-    # examples) so a fresh install never deletes anything without explicit setup.
+    # The bundled default ships with just the generally-applicable "git" filter
+    # active; more workflow-specific examples are commented out.
     filters = load_config(None)
-    assert filters == []
+    names = {f["name"] for f in filters}
+    assert names == {"git"}
 
 def test_load_config_from_explicit_path(tmp_path):
     cfg = tmp_path / "config.toml"

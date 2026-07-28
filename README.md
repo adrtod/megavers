@@ -90,7 +90,7 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 
 Filters are defined in `config.toml`. Each filter has a name and at least one of: a list of path substrings (`path_contains`, case-sensitive, matching MEGA's own path semantics) or a list of extensions. If both are set, both must match (AND). Across filters, any match selects the file (OR). A filter with neither `path_contains` nor `extensions` is rejected at startup, since it would otherwise match every file in the account.
 
-The bundled default ships with no active filters (the examples below are commented out in it) — `megavers-prune` refuses to run until you define at least one, either by creating your own `./config.toml` or `~/.config/megavers/config.toml`, or by using `--path-contains` / `--ext` on the command line.
+The bundled default ships with only the `git` filter active — it's the one pattern that's broadly applicable regardless of your workflow. More specific examples (like `results` below) are included commented out. Customize by creating your own `./config.toml` or `~/.config/megavers/config.toml`, or use `--path-contains` / `--ext` on the command line.
 
 ```toml
 [[filter]]
@@ -98,11 +98,11 @@ name = "git"
 description = "Git repository internals"
 path_contains = ["/.git/"]
 
-[[filter]]
-name = "results"
-description = "Binary output files under result/sandbox directories"
-path_contains = ["/results/", "/sandbox/", "/outputs/"]
-extensions = [".pkl", ".gz", ".png", ".csv"]   # etc.
+# [[filter]]
+# name = "results"
+# description = "Binary output files under result/sandbox directories"
+# path_contains = ["/results/", "/sandbox/", "/outputs/"]
+# extensions = [".pkl", ".gz", ".png", ".csv"]   # etc.
 ```
 
 Add, remove, or modify filters freely — the tool has no hardcoded logic.
