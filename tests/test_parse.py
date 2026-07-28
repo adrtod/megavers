@@ -62,6 +62,54 @@ Versions of /docs/ghost.txt:
 ---- 2     480000 2025-05-10T08:00:00 H:QrStUvWx ghost.txt#1746864000
 """
 
+SINGLE_FILE_SCAN_NO_HEADER = """\
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp PLAN.md
+
+Versions of MEGAsync/megavers/PLAN.md:
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp PLAN.md
+---- 2     480000 2025-05-10T08:00:00 H:QrStUvWx PLAN.md#1746864000
+---- 1     460000 2025-03-01T14:00:00 H:YzAbCdEf PLAN.md#1740837600
+"""
+
+HASH_IN_REAL_FILENAME = """\
+/docs:
+FLAGS VERS      SIZE DATE                 NAME
+---- 2     512000 2025-07-01T09:00:00 H:IjKlMnOp notes#12345
+
+Versions of /docs/notes#12345:
+---- 2     512000 2025-07-01T09:00:00 H:IjKlMnOp notes#12345
+---- 1     480000 2025-05-10T08:00:00 H:QrStUvWx notes#12345#1746864000
+"""
+
+MISSING_VERSIONS_BLOCK = """\
+/docs:
+FLAGS VERS      SIZE DATE                 NAME
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp phantom.txt
+"""
+
+OUT_OF_ORDER_VERSIONS = """\
+/docs:
+FLAGS VERS      SIZE DATE                 NAME
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp notes.txt
+
+Versions of /docs/notes.txt:
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp notes.txt
+---- 1     460000 2025-03-01T14:00:00 H:YzAbCdEf notes.txt#1740837600
+---- 2     480000 2025-05-10T08:00:00 H:QrStUvWx notes.txt#1746864000
+"""
+
+STRAY_LINE_MID_BLOCK = """\
+/docs:
+FLAGS VERS      SIZE DATE                 NAME
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp notes.txt
+
+Versions of /docs/notes.txt:
+---- 3     512000 2025-07-01T09:00:00 H:IjKlMnOp notes.txt
+Some unexpected warning text here
+---- 2     480000 2025-05-10T08:00:00 H:QrStUvWx notes.txt#1746864000
+---- 1     460000 2025-03-01T14:00:00 H:YzAbCdEf notes.txt#1740837600
+"""
+
 NESTED_DIRS = """\
 /parent:
 FLAGS VERS      SIZE DATE                 NAME
@@ -175,11 +223,52 @@ def test_parse_timestamp_suffix_stripped():
         assert "#" not in vf.name
 
 
-def test_parse_orphan_version_block_ignored():
+def test_parse_orphan_version_block_ignored(capsys):
     # ghost.txt never appeared in directory listing — its versions block must be ignored
     result = parse(ORPHAN_VERSION_BLOCK.splitlines())
     assert "/docs/ghost.txt" not in result
     assert result == {}
+    assert "ghost.txt" in capsys.readouterr().err
+
+
+def test_parse_single_file_scan_no_section_header():
+    # Scanning a single file (not a directory) — mega-ls emits no "path:" header,
+    # so the path must come from the "Versions of" block, not a directory prefix.
+    result = parse(SINGLE_FILE_SCAN_NO_HEADER.splitlines())
+    assert "/MEGAsync/megavers/PLAN.md" in result
+    assert "/PLAN.md" not in result
+    assert result["/MEGAsync/megavers/PLAN.md"].old_count == 2
+
+
+def test_parse_hash_in_real_filename_not_stripped():
+    result = parse(HASH_IN_REAL_FILENAME.splitlines())
+    assert "/docs/notes#12345" in result
+    assert result["/docs/notes#12345"].name == "notes#12345"
+
+
+def test_parse_missing_versions_block_warns(capsys):
+    # phantom.txt claims 3 versions but no "Versions of" block ever appears for it
+    result = parse(MISSING_VERSIONS_BLOCK.splitlines())
+    assert result == {}
+    assert "phantom.txt" in capsys.readouterr().err
+
+
+def test_parse_versions_sorted_descending_regardless_of_input_order():
+    result = parse(OUT_OF_ORDER_VERSIONS.splitlines())
+    vf = result["/docs/notes.txt"]
+    assert [v.version_num for v in vf.old_versions] == [2, 1]
+
+
+def test_parse_stray_line_mid_block_does_not_drop_versions():
+    result = parse(STRAY_LINE_MID_BLOCK.splitlines())
+    assert "/docs/notes.txt" in result
+    assert result["/docs/notes.txt"].old_count == 2
+
+
+def test_parse_root_file_double_slash_normalized():
+    result = parse(ROOT_FILE.splitlines())
+    assert "/root.bin" in result
+    assert result["/root.bin"].old_count == 1
 
 
 def test_parse_nested_dirs():

@@ -47,6 +47,8 @@ class VersionedFile:
     current_size:   int
     current_mtime:  str
     total_versions: int
+    flags:          str = ""   # node flags of the current version, e.g. "----" / "drwx"
+    handle:         str = ""   # handle of the current version, H:XXXXXXXX
     old_versions:   list[OldVersion] = field(default_factory=list)
 
     @property
@@ -99,6 +101,7 @@ def fetch_raw(path: str) -> list[str]:
 
 def normalize_path(p: str) -> str:
     p = p.strip()
+    p = re.sub(r'^/+', '/', p)
     return p if p.startswith("/") else "/" + p
 
 
@@ -113,16 +116,53 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
     Parse mega-ls -l -r --versions --show-handles output.
 
     Structure per directory:
-      section_header:
+      section_header:                              (absent when scanning a single file)
         file lines  (FLAGS VERS SIZE DATE [H:HANDLE] NAME)
       Versions of <path>:
-        version lines (current first, then old in descending order)
+        version lines (current first, then old, order not guaranteed)
       [next section header]
+
+    The "Versions of <path>:" header carries the only fully-qualified path in
+    the output — a directory section header may be absent entirely (single-file
+    scan) or relative to the scan root, so file paths are never built from it.
+    Instead, each directory-listing line is buffered by basename until its
+    matching "Versions of" block arrives, which supplies the authoritative path.
     """
     versioned: dict[str, VersionedFile] = {}
-    current_dir = ""
-    versions_of_path: str | None = None   # path whose version block we're in
-    version_line_idx = 0                      # 0 = current version (skip)
+    pending: dict[str, dict] = {}   # basename -> plain-listing metadata awaiting its "Versions of" block
+
+    in_block = False                       # currently inside a "Versions of ...:" block
+    active_entry: dict | None = None       # pending entry matched to the open block (None if orphaned)
+    active_path: str | None = None
+    active_versions: list[OldVersion] = []
+    version_line_idx = 0                   # 0 = current version line inside a block (skip)
+
+    def close_block() -> None:
+        nonlocal in_block, active_entry, active_path, active_versions
+        if active_entry is not None:
+            versioned[active_path] = VersionedFile(
+                path=active_path,
+                name=active_entry["name"],
+                current_size=active_entry["size"],
+                current_mtime=active_entry["date"],
+                total_versions=active_entry["vers"],
+                flags=active_entry["flags"],
+                handle=active_entry["handle"],
+                old_versions=sorted(
+                    active_versions, key=lambda v: v.version_num, reverse=True,
+                ),
+            )
+        in_block = False
+        active_entry = None
+        active_path = None
+        active_versions = []
+
+    def close_section() -> None:
+        close_block()
+        for name, entry in pending.items():
+            print(f"Warning: {name!r} lists {entry['vers']} versions but no "
+                  f"matching 'Versions of' block was found — skipping.", file=sys.stderr)
+        pending.clear()
 
     for line in lines:
         if is_decoration(line):
@@ -136,40 +176,45 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
         # "Versions of <path>:" block header
         m = VERSIONS_OF_RE.match(stripped)
         if m:
-            versions_of_path = normalize_path(m.group(1))
+            close_block()
+            header_path = normalize_path(m.group(1))
+            basename = header_path.rsplit("/", 1)[-1]
+            entry = pending.pop(basename, None)
+            if entry is None:
+                print(f"Warning: 'Versions of {header_path}' has no matching "
+                      f"directory listing entry — skipping.", file=sys.stderr)
+            in_block = True
+            active_entry = entry
+            active_path = header_path
             version_line_idx = 0
             continue
 
         # Directory section header "path:"  (not a node line, not a "Versions of")
         m = SECTION_RE.match(stripped)
         if m and not NODE_RE.match(stripped):
-            current_dir = normalize_path(m.group(1))
-            versions_of_path = None
+            close_section()
             continue
 
         # File / version node line
         m = NODE_RE.match(stripped)
         if not m:
-            versions_of_path = None
+            # Unrecognized line (e.g. a stray warning wrapped mid-block) — ignore it
+            # without closing the current block, so following version lines still parse.
             continue
 
         flags, vers_s, size_s, date, handle, name = m.groups()
         handle = handle or ""
-        # Strip MEGA's internal version timestamp suffix (e.g. filename#1783436394)
-        name = re.sub(r'#\d+$', '', name)
         size = int(size_s) if size_s != "-" else 0
         vers = int(vers_s) if vers_s != "-" else 0
-        is_dir = flags[0] == "d"
+        is_dir = flags[0] != "-"
 
-        if versions_of_path:
-            # Inside a "Versions of" block
+        if in_block:
             if version_line_idx == 0:
                 # First line = current version, already recorded — skip
                 version_line_idx += 1
                 continue
-            vf = versioned.get(versions_of_path)
-            if vf:
-                vf.old_versions.append(OldVersion(
+            if active_entry is not None:
+                active_versions.append(OldVersion(
                     size=size, mtime=date, version_num=vers, handle=handle,
                 ))
             version_line_idx += 1
@@ -178,15 +223,12 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
             # Regular directory listing — only care about files with versions
             if is_dir or vers <= 1:
                 continue
-            full_path = current_dir.rstrip("/") + "/" + name
-            versioned[full_path] = VersionedFile(
-                path=full_path,
-                name=name,
-                current_size=size,
-                current_mtime=date,
-                total_versions=vers,
-            )
+            pending[name] = {
+                "name": name, "size": size, "date": date,
+                "vers": vers, "handle": handle, "flags": flags,
+            }
 
+    close_section()
     return versioned
 
 
@@ -271,6 +313,8 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
             "name":          vf.name,
             "current_size":  vf.current_size,
             "current_mtime": vf.current_mtime,
+            "flags":         vf.flags,
+            "handle":        vf.handle,
             "old_count":     vf.old_count,
             "version_size":  vf.version_size,
             "versions": [
@@ -280,7 +324,7 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
                     "version_num": v.version_num,
                     "handle":      v.handle,
                 }
-                for v in sorted(vf.old_versions, key=lambda v: v.mtime, reverse=True)
+                for v in sorted(vf.old_versions, key=lambda v: v.version_num, reverse=True)
             ],
         }
         for vf in sorted(versioned.values(), key=lambda f: f.version_size, reverse=True)

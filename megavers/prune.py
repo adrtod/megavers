@@ -88,13 +88,17 @@ def load_versioned(args) -> dict[str, VersionedFile]:
                 path=r["path"], name=r["name"],
                 current_size=r["current_size"], current_mtime=r["current_mtime"],
                 total_versions=r["old_count"] + 1,
-                old_versions=[
-                    OldVersion(
-                        size=v["size"], mtime=v["mtime"], version_num=v["version_num"],
-                        handle=v.get("handle", ""),
-                    )
-                    for v in r["versions"]
-                ],
+                flags=r.get("flags", ""), handle=r.get("handle", ""),
+                old_versions=sorted(
+                    (
+                        OldVersion(
+                            size=v["size"], mtime=v["mtime"], version_num=v["version_num"],
+                            handle=v.get("handle", ""),
+                        )
+                        for v in r["versions"]
+                    ),
+                    key=lambda v: v.version_num, reverse=True,
+                ),
             )
             out[vf.path] = vf
         print(f"Loaded {len(out)} versioned files from {args.from_json}.")
