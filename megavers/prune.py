@@ -12,7 +12,6 @@ import re
 import sys
 import json
 import argparse
-import subprocess
 import tomllib
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files
@@ -21,7 +20,7 @@ from pathlib import Path, PurePosixPath
 from megavers import __version__
 from megavers.analyze import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
-    parse_mtime,
+    parse_mtime, run_mega,
 )
 
 USER_CONFIG_SEARCH_PATH = [
@@ -76,6 +75,9 @@ def validate_filters(filters: list[dict]) -> None:
             print(f"Error: unrecognized key(s) in config filter {label!r}: "
                   f"{sorted(unknown)}", file=sys.stderr)
             sys.exit(1)
+        if not f.get("name"):
+            print(f"Error: {label} is missing a 'name'.", file=sys.stderr)
+            sys.exit(1)
         if not f.get("path_contains") and not f.get("extensions"):
             print(f"Error: config filter {label!r} has neither 'path_contains' nor "
                   "'extensions' set, so it would match every file. Add at least one, "
@@ -103,31 +105,39 @@ def build_filter_fn(f: dict):
 
 def load_versioned(args) -> dict[str, VersionedFile]:
     if args.from_json:
-        with open(args.from_json) as fh:
-            records = json.load(fh)
-        out = {}
-        for r in records:
-            vf = VersionedFile(
-                path=r["path"], name=r["name"],
-                current_size=r["current_size"], current_mtime=r["current_mtime"],
-                total_versions=r["old_count"] + 1,
-                flags=r.get("flags", ""), handle=r.get("handle", ""),
-                old_versions=sorted(
-                    (
-                        OldVersion(
-                            size=v["size"], mtime=v["mtime"], version_num=v["version_num"],
-                            handle=v.get("handle", ""),
-                        )
-                        for v in r["versions"]
+        try:
+            with open(args.from_json, encoding="utf-8") as fh:
+                records = json.load(fh)
+            out = {}
+            for r in records:
+                vf = VersionedFile(
+                    path=r["path"], name=r["name"],
+                    current_size=r["current_size"], current_mtime=r["current_mtime"],
+                    total_versions=r["old_count"] + 1,
+                    flags=r.get("flags", ""), handle=r.get("handle", ""),
+                    old_versions=sorted(
+                        (
+                            OldVersion(
+                                size=v["size"], mtime=v["mtime"], version_num=v["version_num"],
+                                handle=v.get("handle", ""),
+                            )
+                            for v in r["versions"]
+                        ),
+                        key=lambda v: v.version_num, reverse=True,
                     ),
-                    key=lambda v: v.version_num, reverse=True,
-                ),
-            )
-            out[vf.path] = vf
+                )
+                out[vf.path] = vf
+        except FileNotFoundError:
+            print(f"Error: {args.from_json} not found.", file=sys.stderr)
+            sys.exit(1)
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"Error: {args.from_json} is not a valid megavers-analyze --json "
+                  f"file ({e}).", file=sys.stderr)
+            sys.exit(1)
         print(f"Loaded {len(out)} versioned files from {args.from_json}.")
         return out
     else:
-        print(f"Scanning {args.path!r} …", flush=True)
+        print(f"Scanning {args.path!r} ...", flush=True)
         lines = fetch_raw(args.path)
         print(f"  {len(lines)} lines received.", flush=True)
         versioned = parse(lines)
@@ -141,7 +151,7 @@ def warn_on_count_mismatches(versioned: dict[str, VersionedFile]) -> None:
     for vf in versioned.values():
         if vf.old_count != vf.total_versions - 1:
             print(f"Warning: {vf.path} reports {vf.total_versions} total versions "
-                  f"but only {vf.old_count} were parsed — some old versions may not "
+                  f"but only {vf.old_count} were parsed - some old versions may not "
                   "be deletable (e.g. owned by a contact).", file=sys.stderr)
 
 
@@ -175,7 +185,11 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
     selected = [vf for vf in versioned.values() if any(fn(vf) for fn in active_fns)]
 
     if args.min_version_size:
-        threshold = parse_size(args.min_version_size)
+        try:
+            threshold = parse_size(args.min_version_size)
+        except ValueError as e:
+            print(f"Error: --min-version-size: {e}", file=sys.stderr)
+            sys.exit(1)
         selected = [vf for vf in selected if vf.version_size >= threshold]
 
     return selected
@@ -237,7 +251,7 @@ def print_dry_run(
 
     print()
     print("=" * 72)
-    print("DRY RUN — nothing deleted")
+    print("DRY RUN - nothing deleted")
     print("=" * 72)
     print(f"  Files affected:              {len(rows)}")
     print(f"  Old versions to delete:      {total_count}")
@@ -284,7 +298,7 @@ def execute_prune(
     unsafe = [h for h in all_handles if h in current_handles]
     if unsafe:
         print(f"Refusing to continue: {len(unsafe)} version(s) scheduled for deletion "
-              "match a file's current-version handle. This should not happen — "
+              "match a file's current-version handle. This should not happen - "
               "aborting without deleting anything.", file=sys.stderr)
         return False
 
@@ -296,7 +310,7 @@ def execute_prune(
         return True
 
     print(f"\nDeleting {len(all_handles)} old version(s) across {len(rows)} file(s) "
-          f"({fmt_size(total_bytes)} to recover) …")
+          f"({fmt_size(total_bytes)} to recover) ...")
     return _run_batched("mega-rm", all_handles, total_bytes)
 
 
@@ -306,11 +320,8 @@ def _run_batched(cmd: str, items: list[str], total_bytes: int) -> bool:
     for i in range(0, len(items), BATCH_SIZE):
         batch = items[i:i + BATCH_SIZE]
         end = min(i + BATCH_SIZE, len(items))
-        print(f"  [{i + 1}–{end} / {len(items)}] …", end=" ", flush=True)
-        r = subprocess.run(
-            [cmd, "-f", *batch],
-            capture_output=True, text=True, stdin=subprocess.DEVNULL,
-        )
+        print(f"  [{i + 1}-{end} / {len(items)}] ...", end=" ", flush=True)
+        r = run_mega([cmd, "-f", *batch])
         if r.returncode != 0:
             print("ERROR")
             errors.append((batch, r.stderr.strip()))

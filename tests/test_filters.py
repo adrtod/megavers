@@ -329,6 +329,10 @@ def test_validate_filters_rejects_unknown_key():
     with pytest.raises(SystemExit):
         validate_filters([{"name": "typo", "path_contain": ["/.git/"]}])
 
+def test_validate_filters_rejects_missing_name():
+    with pytest.raises(SystemExit):
+        validate_filters([{"path_contains": ["/.git/"]}])
+
 
 # ── _non_negative_int ─────────────────────────────────────────────────────────
 

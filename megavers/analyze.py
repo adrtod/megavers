@@ -77,8 +77,29 @@ class VersionedFile:
 
 # ── MEGAcmd interaction ───────────────────────────────────────────────────────
 
+MEGACMD_INSTALL_HINT = (
+    "MEGAcmd not found (mega-* commands are missing from PATH). "
+    "Install it from https://mega.io/cmd, then log in with 'mega-login <email>'."
+)
+
+
+def run_mega(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run a mega-* command with consistent encoding/stdin handling, and a
+    friendly error instead of a traceback when MEGAcmd itself isn't installed."""
+    kwargs.setdefault("capture_output", True)
+    kwargs.setdefault("text", True)
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    kwargs.setdefault("stdin", subprocess.DEVNULL)
+    try:
+        return subprocess.run(cmd, **kwargs)
+    except FileNotFoundError:
+        print(MEGACMD_INSTALL_HINT, file=sys.stderr)
+        sys.exit(1)
+
+
 def check_logged_in() -> None:
-    r = subprocess.run(["mega-whoami"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    r = run_mega(["mega-whoami"])
     if "Not logged in" in r.stderr or "Not logged in" in r.stdout:
         print("Not logged into MEGAcmd. Run:  mega-login <email> <password>",
               file=sys.stderr)
@@ -86,14 +107,14 @@ def check_logged_in() -> None:
 
 
 def fetch_raw(path: str) -> list[str]:
-    r = subprocess.run(
-        ["mega-ls", "-l", "-r", "--versions", "--show-handles",
-         "--time-format=ISO6081_WITH_TIME", path],
-        capture_output=True, text=True, stdin=subprocess.DEVNULL,
-    )
-    if r.returncode != 0 and not r.stdout.strip():
-        print(f"mega-ls failed:\n{r.stderr}", file=sys.stderr)
-        sys.exit(1)
+    r = run_mega(["mega-ls", "-l", "-r", "--versions", "--show-handles",
+                  "--time-format=ISO6081_WITH_TIME", path])
+    if r.returncode != 0:
+        if not r.stdout.strip():
+            print(f"mega-ls failed (exit code {r.returncode}):\n{r.stderr}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Warning: mega-ls exited with code {r.returncode} - output may be "
+              f"incomplete:\n{r.stderr}", file=sys.stderr)
     return r.stdout.splitlines()
 
 
@@ -161,7 +182,7 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
         close_block()
         for name, entry in pending.items():
             print(f"Warning: {name!r} lists {entry['vers']} versions but no "
-                  f"matching 'Versions of' block was found — skipping.", file=sys.stderr)
+                  f"matching 'Versions of' block was found - skipping.", file=sys.stderr)
         pending.clear()
 
     for line in lines:
@@ -182,7 +203,7 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
             entry = pending.pop(basename, None)
             if entry is None:
                 print(f"Warning: 'Versions of {header_path}' has no matching "
-                      f"directory listing entry — skipping.", file=sys.stderr)
+                      f"directory listing entry - skipping.", file=sys.stderr)
             in_block = True
             active_entry = entry
             active_path = header_path
@@ -335,7 +356,7 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
         }
         for vf in sorted(versioned.values(), key=lambda f: f.version_size, reverse=True)
     ]
-    with open(out_path, "w") as fh:
+    with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     print(f"\nFull results saved to: {out_path}")
 
@@ -361,12 +382,12 @@ def main() -> None:
 
     check_logged_in()
 
-    print(f"Scanning {args.path!r} …", flush=True)
+    print(f"Scanning {args.path!r} ...", flush=True)
     lines = fetch_raw(args.path)
     print(f"  {len(lines)} lines received.", flush=True)
 
     if args.raw_dump:
-        with open(args.raw_dump, "w") as fh:
+        with open(args.raw_dump, "w", encoding="utf-8", errors="replace") as fh:
             fh.write("\n".join(lines))
         print(f"Raw output saved to: {args.raw_dump}")
 
