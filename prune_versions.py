@@ -63,8 +63,12 @@ def build_filter_fn(f: dict):
             return True
         # Handle double extensions like .tar.gz
         suffix = PurePosixPath(path).suffix
-        if path.endswith(".tar.gz") or path.endswith(".tar.bz2"):
+        if path.endswith(".tar.gz"):
             suffix = ".gz"
+        elif path.endswith(".tar.bz2"):
+            suffix = ".bz2"
+        elif path.endswith(".tar.xz"):
+            suffix = ".xz"
         return suffix in extensions
 
     return match
@@ -288,25 +292,25 @@ def main() -> None:
         epilog="""
 examples:
   # Delete with all filters from config.toml
-  python3 prune_versions.py
+  megavers-prune
 
   # Preview before deleting
-  python3 prune_versions.py --dry-run
+  megavers-prune --dry-run
 
   # Run only the 'git' filter defined in config.toml
-  python3 prune_versions.py --filter git
+  megavers-prune --filter git
 
   # Keep only the 3 most recent old versions per matched file
-  python3 prune_versions.py --keep-n 3 --dry-run
+  megavers-prune --keep-n 3 --dry-run
 
   # Delete versions older than 90 days (all config filters)
-  python3 prune_versions.py --older-than 90
+  megavers-prune --older-than 90
 
   # Ad-hoc: any file whose path contains 'backup'
-  python3 prune_versions.py --path-contains backup
+  megavers-prune --path-contains backup
 
   # Reuse a previously saved scan
-  python3 prune_versions.py --from-json results.json
+  megavers-prune --from-json results.json
 """,
     )
 
@@ -314,7 +318,7 @@ examples:
     src.add_argument("path", nargs="?", default="/",
                      help="Cloud path to scan (default: /)")
     src.add_argument("--from-json", metavar="FILE",
-                     help="Load from analyze_versions.py --json output (skips re-scanning)")
+                     help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
                      help="Config file path. Default search order: "
                           "./config.toml → ~/.config/megavers/config.toml "

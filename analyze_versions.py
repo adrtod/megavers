@@ -13,7 +13,6 @@ import argparse
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 
 # ── Output line patterns ──────────────────────────────────────────────────────
@@ -57,11 +56,11 @@ class VersionedFile:
         return len(self.old_versions)
 
     @property
-    def oldest_mtime(self) -> Optional[str]:
+    def oldest_mtime(self) -> str | None:
         return min((v.mtime for v in self.old_versions), default=None)
 
     @property
-    def churn_rate(self) -> Optional[float]:
+    def churn_rate(self) -> float | None:
         """Versions per day, measured from oldest version to now."""
         if not self.old_versions or not self.oldest_mtime:
             return None
@@ -120,7 +119,7 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
     """
     versioned: dict[str, VersionedFile] = {}
     current_dir = ""
-    versions_of_path: Optional[str] = None   # path whose version block we're in
+    versions_of_path: str | None = None   # path whose version block we're in
     version_line_idx = 0                      # 0 = current version (skip)
 
     for line in lines:
