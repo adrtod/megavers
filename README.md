@@ -44,6 +44,46 @@ TOP 20 FILES BY VERSION SPACE
 ...
 ```
 
+### `prune_versions.py` — Version pruner
+
+Deletes old version histories for files matched by one or more filters. Always dry-runs by default — pass `--execute` to actually delete. The current (latest) version of every file is always kept.
+
+```
+usage: prune_versions.py [-h] [--from-json FILE]
+                         [--git] [--results] [--path-contains STR] [--ext EXT]
+                         [--min-version-size SIZE] [--execute] [path]
+
+source:
+  path                Cloud path to scan (default: /)
+  --from-json FILE    Load from analyze_versions.py --json output (skips re-scanning)
+
+filters (combinable, OR logic):
+  --git               Files inside .git/ directories
+  --results           Binary output files (.pkl, .tar.gz, .png …) under results/ or sandbox/ dirs
+  --path-contains S   Path contains the given string (repeatable)
+  --ext EXT           File extension, e.g. .pkl (repeatable)
+  --min-version-size  Only select files where version space >= SIZE (e.g. 50MB)
+
+mode:
+  --execute           Actually delete. Without this flag: dry-run only.
+```
+
+**Examples:**
+
+```bash
+# Preview what --git would remove
+python3 prune_versions.py --git
+
+# Preview both filters, only files with >50 MB of version overhead
+python3 prune_versions.py --git --results --min-version-size 50MB
+
+# Delete, reusing a previously saved scan to avoid re-fetching
+python3 prune_versions.py --git --results --from-json results.json --execute
+
+# Delete versions of all .pkl files anywhere
+python3 prune_versions.py --ext .pkl --execute
+```
+
 ## How MEGA versioning works
 
 Each time a synced file is modified, MEGA stores the previous copy as a version. `mega-ls -l` reports the total version count in the `VERS` column. With the `--versions` flag it emits a `Versions of <path>:` block after each directory listing, containing all versions in descending order (current first). The analyzer parses this structure: the first entry in each block is the live file (already counted in current size); all subsequent entries are old versions whose sizes are summed.
