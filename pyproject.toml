@@ -32,8 +32,8 @@ classifiers = [
 Repository = "https://github.com/atodeschini/mega-version-cleaner"
 
 [project.scripts]
-mega-analyze = "analyze_versions:main"
-mega-prune   = "prune_versions:main"
+megavers-analyze = "analyze_versions:main"
+megavers-prune   = "prune_versions:main"
 
 [tool.setuptools]
 py-modules = ["analyze_versions", "prune_versions"]
