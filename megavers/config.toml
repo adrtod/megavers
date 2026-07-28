@@ -22,11 +22,6 @@
 # Across filters: OR logic — a file is selected if it matches ANY active filter.
 
 [[filter]]
-name = "git"
-description = "Git repository internals (pack files, loose objects, index, etc.)"
-path_contains = ["/.git/"]
-
-[[filter]]
 name = "os-junk"
 description = "OS-generated metadata files (macOS Finder, Windows Explorer)"
 path_contains = ["/.DS_Store", "/Thumbs.db", "/desktop.ini"]
@@ -40,6 +35,11 @@ extensions = [".swp"]
 name = "office-locks"
 description = "Microsoft Office lock files, created while a document is open"
 path_contains = ["/~$"]
+
+[[filter]]
+name = "git"
+description = "Git repository internals (pack files, loose objects, index, etc.)"
+path_contains = ["/.git/"]
 
 [[filter]]
 name = "python-cache-dirs"
