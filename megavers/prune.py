@@ -351,7 +351,7 @@ def _non_negative_int(s: str) -> int:
     return v
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prune MEGA file version histories (requires MEGAcmd). "
                     "Filters are defined in config.toml. "
@@ -420,7 +420,11 @@ examples:
                       help="List filters defined in config and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     config_path = args.config or find_user_config()
     config_filters = load_config(config_path)
