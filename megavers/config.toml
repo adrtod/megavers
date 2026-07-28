@@ -47,6 +47,7 @@ description = "Python cache and build-artifact directories"
 path_contains = [
     "/__pycache__/", "/.pytest_cache/", "/.mypy_cache/", "/.ruff_cache/",
     ".egg-info/", "/.ipynb_checkpoints/", "/.numba_cache/",
+    "/jax_cache/", "/.jax_cache/",
 ]
 
 [[filter]]
