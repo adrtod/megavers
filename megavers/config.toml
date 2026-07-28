@@ -46,13 +46,13 @@ name = "python-cache-dirs"
 description = "Python cache and build-artifact directories"
 path_contains = [
     "/__pycache__/", "/.pytest_cache/", "/.mypy_cache/", "/.ruff_cache/",
-    ".egg-info/", "/.ipynb_checkpoints/",
+    ".egg-info/", "/.ipynb_checkpoints/", "/.numba_cache/",
 ]
 
 [[filter]]
 name = "python-bytecode"
-description = "Compiled Python bytecode files"
-extensions = [".pyc", ".pyo"]
+description = "Compiled Python bytecode and JIT cache files (CPython, Numba)"
+extensions = [".pyc", ".pyo", ".nbi", ".nbc"]
 
 # Example: binary output files under result/sandbox/output directories
 # [[filter]]
