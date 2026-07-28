@@ -1,14 +1,10 @@
-"""Tests for prune_versions filter logic: build_filter_fn(), apply_filters(), versions_to_delete()."""
+"""Tests for megavers.prune filter logic: build_filter_fn(), apply_filters(), versions_to_delete()."""
 
-import sys
-import os
 import types
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from analyze_versions import OldVersion, VersionedFile
-from prune_versions import build_filter_fn, apply_filters, versions_to_delete, parse_size
+from megavers.analyze import OldVersion, VersionedFile
+from megavers.prune import build_filter_fn, apply_filters, versions_to_delete, parse_size
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -214,7 +210,7 @@ def test_versions_to_delete_keep_n_zero_returns_all():
 
 def test_versions_to_delete_older_than_only(monkeypatch):
     now = datetime(2025, 8, 1, 12, 0, 0)
-    monkeypatch.setattr("prune_versions.datetime", type("dt", (), {
+    monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
         "now": staticmethod(lambda: now),
         "fromisoformat": staticmethod(datetime.fromisoformat),
     }))
@@ -231,7 +227,7 @@ def test_versions_to_delete_older_than_only(monkeypatch):
 
 def test_versions_to_delete_all_newer_than_cutoff_returns_empty(monkeypatch):
     now = datetime(2025, 8, 1, 12, 0, 0)
-    monkeypatch.setattr("prune_versions.datetime", type("dt", (), {
+    monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
         "now": staticmethod(lambda: now),
         "fromisoformat": staticmethod(datetime.fromisoformat),
     }))
@@ -241,7 +237,7 @@ def test_versions_to_delete_all_newer_than_cutoff_returns_empty(monkeypatch):
 
 def test_versions_to_delete_both_or_logic(monkeypatch):
     now = datetime(2025, 8, 1, 12, 0, 0)
-    monkeypatch.setattr("prune_versions.datetime", type("dt", (), {
+    monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
         "now": staticmethod(lambda: now),
         "fromisoformat": staticmethod(datetime.fromisoformat),
     }))
@@ -259,7 +255,7 @@ def test_versions_to_delete_both_or_logic(monkeypatch):
 
 def test_versions_to_delete_both_or_logic_old_in_top_n(monkeypatch):
     now = datetime(2025, 8, 1, 12, 0, 0)
-    monkeypatch.setattr("prune_versions.datetime", type("dt", (), {
+    monkeypatch.setattr("megavers.prune.datetime", type("dt", (), {
         "now": staticmethod(lambda: now),
         "fromisoformat": staticmethod(datetime.fromisoformat),
     }))

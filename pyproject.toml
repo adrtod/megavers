@@ -32,11 +32,17 @@ classifiers = [
 test = ["pytest>=8"]
 
 [project.urls]
+Homepage  = "https://github.com/adrtod/megavers"
 Repository = "https://github.com/adrtod/megavers"
+Issues    = "https://github.com/adrtod/megavers/issues"
+Changelog = "https://github.com/adrtod/megavers/blob/main/CHANGELOG.md"
 
 [project.scripts]
-megavers-analyze = "analyze_versions:main"
-megavers-prune   = "prune_versions:main"
+megavers-analyze = "megavers.analyze:main"
+megavers-prune   = "megavers.prune:main"
 
 [tool.setuptools]
-py-modules = ["analyze_versions", "prune_versions"]
+packages = ["megavers"]
+
+[tool.setuptools.package-data]
+megavers = ["config.toml"]

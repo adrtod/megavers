@@ -15,38 +15,39 @@ import argparse
 import subprocess
 import tomllib
 from datetime import datetime, timedelta
+from importlib.resources import files
 from pathlib import Path, PurePosixPath
 
-from analyze_versions import (
+from megavers import __version__
+from megavers.analyze import (
     OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
-    __version__,
 )
 
-BUNDLED_CONFIG = Path(__file__).parent / "config.toml"
-
-CONFIG_SEARCH_PATH = [
+USER_CONFIG_SEARCH_PATH = [
     Path.cwd() / "config.toml",
     Path.home() / ".config" / "megavers" / "config.toml",
-    BUNDLED_CONFIG,
 ]
+
+BUNDLED_CONFIG_LABEL = "<bundled default>"
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
 
-def find_config() -> Path:
-    """Return the first config file found in the search path."""
-    for candidate in CONFIG_SEARCH_PATH:
+def find_user_config() -> Path | None:
+    """Return the first user-supplied config found on disk, or None."""
+    for candidate in USER_CONFIG_SEARCH_PATH:
         if candidate.exists():
             return candidate
-    # None found — tell the user where to put one
-    paths = "\n  ".join(str(p) for p in CONFIG_SEARCH_PATH)
-    print(f"Error: no config.toml found. Searched:\n  {paths}", file=sys.stderr)
-    sys.exit(1)
+    return None
 
 
-def load_config(path: Path) -> list[dict]:
-    with open(path, "rb") as fh:
-        data = tomllib.load(fh)
+def load_config(path: Path | None) -> list[dict]:
+    """Load filters from `path`, or from the bundled default config when `path` is None."""
+    if path is None:
+        data = tomllib.loads(files("megavers").joinpath("config.toml").read_text("utf-8"))
+    else:
+        with open(path, "rb") as fh:
+            data = tomllib.load(fh)
     return data.get("filter", [])
 
 
@@ -351,11 +352,12 @@ examples:
 
     args = parser.parse_args()
 
-    config_path = args.config or find_config()
+    config_path = args.config or find_user_config()
     config_filters = load_config(config_path)
+    config_label = str(config_path) if config_path else BUNDLED_CONFIG_LABEL
 
     if args.list_filters:
-        print(f"Filters in {config_path}:")
+        print(f"Filters in {config_label}:")
         for f in config_filters:
             print(f"  [{f['name']}]  {f.get('description', '')}")
             if f.get("path_contains"):
