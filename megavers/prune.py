@@ -112,6 +112,16 @@ def load_versioned(args) -> dict[str, VersionedFile]:
         return versioned
 
 
+def warn_on_count_mismatches(versioned: dict[str, VersionedFile]) -> None:
+    """Flag files where fewer old versions were parsed than mega-ls reported —
+    e.g. versions owned by a contact, which deleteversions/rm cannot remove."""
+    for vf in versioned.values():
+        if vf.old_count != vf.total_versions - 1:
+            print(f"Warning: {vf.path} reports {vf.total_versions} total versions "
+                  f"but only {vf.old_count} were parsed — some old versions may not "
+                  "be deletable (e.g. owned by a contact).", file=sys.stderr)
+
+
 # ── Filtering ─────────────────────────────────────────────────────────────────
 
 def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: list[dict]) \
@@ -183,6 +193,17 @@ def versions_to_delete(vf: VersionedFile, keep_n: int | None, older_than: int | 
     return list(vf.old_versions)
 
 
+# ── Row computation (shared by dry-run preview and real execution) ────────────
+
+def compute_rows(
+    selected: list[VersionedFile],
+    keep_n: int | None,
+    older_than: int | None,
+) -> list[tuple[VersionedFile, list[OldVersion]]]:
+    rows = [(vf, versions_to_delete(vf, keep_n, older_than)) for vf in selected]
+    return [(vf, vs) for vf, vs in rows if vs]
+
+
 # ── Dry-run report ────────────────────────────────────────────────────────────
 
 def print_dry_run(
@@ -191,8 +212,7 @@ def print_dry_run(
     keep_n: int | None,
     older_than: int | None,
 ) -> None:
-    rows = [(vf, versions_to_delete(vf, keep_n, older_than)) for vf in selected]
-    rows = [(vf, vs) for vf, vs in rows if vs]
+    rows = compute_rows(selected, keep_n, older_than)
 
     total_bytes = sum(sum(v.size for v in vs) for _, vs in rows)
     total_count = sum(len(vs) for _, vs in rows)
@@ -232,43 +252,47 @@ def execute_prune(
     selected: list[VersionedFile],
     keep_n: int | None,
     older_than: int | None,
-) -> None:
-    if keep_n is None and older_than is None:
-        total = sum(vf.version_size for vf in selected)
-        print(f"\nDeleting all old versions for {len(selected)} files "
-              f"({fmt_size(total)} to recover) …")
-        _run_batched("mega-deleteversions", ["-f"],
-                     [vf.path for vf in selected], total, len(selected), "files")
-    else:
-        rows = [(vf, versions_to_delete(vf, keep_n, older_than)) for vf in selected]
-        rows = [(vf, vs) for vf, vs in rows if vs]
+) -> bool:
+    """Delete the selected old versions. Returns True on success (no batch errors)."""
+    rows = compute_rows(selected, keep_n, older_than)
 
-        all_handles = [v.handle for _, vs in rows for v in vs if v.handle]
-        no_handle   = sum(1 for _, vs in rows for v in vs if not v.handle)
-        total_bytes = sum(v.size for _, vs in rows for v in vs)
+    all_handles = [v.handle for _, vs in rows for v in vs if v.handle]
+    no_handle   = sum(1 for _, vs in rows for v in vs if not v.handle)
+    total_bytes = sum(v.size for _, vs in rows for v in vs)
 
-        if no_handle:
-            print(f"Warning: {no_handle} version(s) have no handle and will be skipped. "
-                  "Re-scan without --from-json to get handles.", file=sys.stderr)
-        if not all_handles:
-            print("No deletable versions found (no handles available).")
-            return
+    # Never delete a file's current version — old-version handles must never
+    # collide with the current-version handles of the files we scanned.
+    current_handles = {vf.handle for vf, _ in rows if vf.handle}
+    unsafe = [h for h in all_handles if h in current_handles]
+    if unsafe:
+        print(f"Refusing to continue: {len(unsafe)} version(s) scheduled for deletion "
+              "match a file's current-version handle. This should not happen — "
+              "aborting without deleting anything.", file=sys.stderr)
+        return False
 
-        print(f"\nDeleting {len(all_handles)} specific old versions "
-              f"({fmt_size(total_bytes)} to recover) …")
-        _run_batched("mega-rm", [], all_handles, total_bytes, len(all_handles), "versions")
+    if no_handle:
+        print(f"Warning: {no_handle} version(s) have no handle and will be skipped. "
+              "Re-scan without --from-json to get handles.", file=sys.stderr)
+    if not all_handles:
+        print("No deletable versions found (no handles available).")
+        return True
+
+    print(f"\nDeleting {len(all_handles)} old version(s) across {len(rows)} file(s) "
+          f"({fmt_size(total_bytes)} to recover) …")
+    return _run_batched("mega-rm", all_handles, total_bytes)
 
 
-def _run_batched(
-    cmd: str, flags: list[str], items: list[str],
-    total_bytes: int, total_items: int, label: str,
-) -> None:
+def _run_batched(cmd: str, items: list[str], total_bytes: int) -> bool:
+    """Run `cmd -f <items...>` in batches. Returns True if every batch succeeded."""
     errors = []
     for i in range(0, len(items), BATCH_SIZE):
         batch = items[i:i + BATCH_SIZE]
         end = min(i + BATCH_SIZE, len(items))
         print(f"  [{i + 1}–{end} / {len(items)}] …", end=" ", flush=True)
-        r = subprocess.run([cmd] + flags + batch, capture_output=True, text=True)
+        r = subprocess.run(
+            [cmd, "-f", *batch],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+        )
         if r.returncode != 0:
             print("ERROR")
             errors.append((batch, r.stderr.strip()))
@@ -282,9 +306,11 @@ def _run_batched(
             print(f"  {msg}")
             for item in batch:
                 print(f"    {item}")
-    else:
-        print(f"Done. {total_items} {label} processed.")
-        print(f"Recovered approximately {fmt_size(total_bytes)}.")
+        return False
+
+    print(f"Done. {len(items)} version(s) processed.")
+    print(f"Recovered approximately {fmt_size(total_bytes)}.")
+    return True
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -372,6 +398,7 @@ examples:
 
     check_logged_in()
     versioned = load_versioned(args)
+    warn_on_count_mismatches(versioned)
     selected  = apply_filters(versioned, args, config_filters)
 
     all_version_bytes = sum(vf.version_size for vf in versioned.values())
@@ -383,7 +410,9 @@ examples:
     if args.dry_run:
         print_dry_run(selected, all_version_bytes, args.keep_n, args.older_than)
     else:
-        execute_prune(selected, args.keep_n, args.older_than)
+        ok = execute_prune(selected, args.keep_n, args.older_than)
+        if not ok:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

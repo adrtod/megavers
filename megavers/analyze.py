@@ -78,7 +78,7 @@ class VersionedFile:
 # ── MEGAcmd interaction ───────────────────────────────────────────────────────
 
 def check_logged_in() -> None:
-    r = subprocess.run(["mega-whoami"], capture_output=True, text=True)
+    r = subprocess.run(["mega-whoami"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if "Not logged in" in r.stderr or "Not logged in" in r.stdout:
         print("Not logged into MEGAcmd. Run:  mega-login <email> <password>",
               file=sys.stderr)
@@ -89,7 +89,7 @@ def fetch_raw(path: str) -> list[str]:
     r = subprocess.run(
         ["mega-ls", "-l", "-r", "--versions", "--show-handles",
          "--time-format=ISO6081_WITH_TIME", path],
-        capture_output=True, text=True,
+        capture_output=True, text=True, stdin=subprocess.DEVNULL,
     )
     if r.returncode != 0 and not r.stdout.strip():
         print(f"mega-ls failed:\n{r.stderr}", file=sys.stderr)
