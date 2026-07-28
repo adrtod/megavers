@@ -30,6 +30,19 @@ The report has three ranked tables:
 2. **By version count** — which files have the most historical snapshots
 3. **By churn rate** — which files change most frequently (versions/day), useful for spotting files that should be excluded from sync entirely
 
+**Examples:**
+
+```bash
+# Analyze entire account
+megavers-analyze
+
+# Analyze a specific subfolder, show top 30, save JSON
+megavers-analyze /MEGAsync/MyFolder --top 30 --json results.json
+
+# Debug: inspect raw mega-ls output
+megavers-analyze --raw-dump raw.txt
+```
+
 **Example output:**
 
 ```
@@ -188,16 +201,4 @@ Verify with:
 mega-whoami
 ```
 
-## Usage
-
-```bash
-# Analyze entire account
-megavers-analyze
-
-# Analyze a specific subfolder, show top 30, save JSON
-megavers-analyze /MEGAsync/MyFolder --top 30 --json results.json
-
-# Debug: inspect raw mega-ls output
-megavers-analyze --raw-dump raw.txt
-```
 
