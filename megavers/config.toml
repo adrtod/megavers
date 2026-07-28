@@ -1,28 +1,40 @@
 # megavers config
 #
+# This is the bundled default, used only when no config.toml is found in the
+# current directory or in ~/.config/megavers/config.toml. It ships with no
+# active filters, so megavers-prune will refuse to run ("no active filters")
+# until you define at least one — either by copying this file to
+# ~/.config/megavers/config.toml and uncommenting/editing examples below, or
+# by using --path-contains / --ext on the command line instead.
+#
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.
 #
 # Filter matching logic (within a single filter):
 #   - path_contains: file path must contain at least one of these strings
+#                     (case-sensitive, matching MEGA's own path semantics)
 #   - extensions:    file extension must be in this list
+#   - A filter needs at least one of the two — an empty filter is rejected,
+#     since it would otherwise match every file in the account.
 #   - If both are set: file must satisfy BOTH conditions (AND).
 #   - If only one is set: only that condition is checked.
 #
 # Across filters: OR logic — a file is selected if it matches ANY active filter.
 
-[[filter]]
-name = "git"
-description = "Git repository internals (pack files, loose objects, index, etc.)"
-path_contains = ["/.git/"]
+# Example: git repository internals (pack files, loose objects, index, etc.)
+# [[filter]]
+# name = "git"
+# description = "Git repository internals"
+# path_contains = ["/.git/"]
 
-[[filter]]
-name = "results"
-description = "Binary output files under result/sandbox/output directories"
-path_contains = ["/results/", "/sandbox/", "/outputs/", "/out/", "/artifacts/"]
-extensions = [
-    ".pkl", ".gz", ".zip", ".tar",
-    ".png", ".jpg", ".jpeg", ".svg",
-    ".bin", ".h5", ".hdf5", ".npy", ".npz",
-    ".pt", ".pth", ".mat", ".csv", ".parquet",
-]
+# Example: binary output files under result/sandbox/output directories
+# [[filter]]
+# name = "results"
+# description = "Binary output files under result/sandbox/output directories"
+# path_contains = ["/results/", "/sandbox/", "/outputs/", "/out/", "/artifacts/"]
+# extensions = [
+#     ".pkl", ".gz", ".zip", ".tar",
+#     ".png", ".jpg", ".jpeg", ".svg",
+#     ".bin", ".h5", ".hdf5", ".npy", ".npz",
+#     ".pt", ".pth", ".mat", ".csv", ".parquet",
+# ]
