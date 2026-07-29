@@ -27,7 +27,9 @@ PyPI release. All must-fix and should-fix items addressed:
 
 ## Robustness
 
-- [ ] Auto-start MEGAcmd server if not running (`mega-cmd` in background before first API call)
+- [x] Auto-start MEGAcmd server if not running — turns out MEGAcmd's own
+      client binaries already do this (verified; see DECISIONS.md), no code
+      needed here
 - [x] Surface skipped files — `warn_on_count_mismatches()` flags files where mega-ls
       reports more total versions than were parsed (e.g. contact-owned versions)
 - [ ] Timeout / retry on large accounts — `mega-ls -r /` can take minutes or fail mid-stream

@@ -1,12 +1,13 @@
 """Tests for CLI argument parsing, config file lookup, and the deletion path
 (execute_prune / _run_batched) — the pieces that actually talk to MEGAcmd."""
 
+import argparse
 import json
 from pathlib import Path
 
 import pytest
 
-from megavers.analyze import OldVersion, VersionedFile
+from megavers.analyze import OldVersion, VersionedFile, cloud_path
 from megavers.prune import (
     build_parser, find_user_config, init_config, load_config, load_versioned,
     execute_prune, BUNDLED_CONFIG_LABEL,
@@ -61,6 +62,21 @@ def test_build_parser_repeatable_filter():
 def test_build_parser_path_positional():
     args = build_parser().parse_args(["/some/path"])
     assert args.path == "/some/path"
+
+def test_build_parser_rejects_relative_cloud_path():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["foo/bar"])
+
+
+# ── cloud_path validator (shared by both CLIs) ────────────────────────────────
+
+def test_cloud_path_accepts_absolute():
+    assert cloud_path("/some/path") == "/some/path"
+    assert cloud_path("/") == "/"
+
+def test_cloud_path_rejects_relative():
+    with pytest.raises(argparse.ArgumentTypeError):
+        cloud_path("foo/bar")
 
 
 # ── Config file lookup precedence ─────────────────────────────────────────────
@@ -237,6 +253,49 @@ def test_execute_prune_returns_false_on_batch_error(monkeypatch):
     monkeypatch.setattr("megavers.prune.run_mega", fake_run_mega)
 
     vf = make_vf("/docs/notes.txt", handle="H:CURRENT", old_versions=[
+        make_ov(version_num=1, handle="H:OLD1"),
+    ])
+    ok = execute_prune([vf], None, None)
+    assert ok is False
+
+def test_execute_prune_treats_already_gone_as_soft_warning(monkeypatch, caplog, capsys):
+    # mega-rm returns nonzero for the batch, but every error line is "No such
+    # file or directory" (already deleted by an earlier run) - not a real failure.
+    def fake_run_mega(cmd, **kwargs):
+        class R:
+            returncode = 1
+            stderr = ("[2026-07-29_15-46-42.517882 cmd ERR  H:OLD1: "
+                       "No such file or directory]")
+        return R()
+
+    monkeypatch.setattr("megavers.prune.run_mega", fake_run_mega)
+
+    vf = make_vf("/docs/notes.txt", handle="H:CURRENT", old_versions=[
+        make_ov(version_num=2, handle="H:OLD2", size=200),
+        make_ov(version_num=1, handle="H:OLD1", size=100),
+    ])
+    ok = execute_prune([vf], None, None)
+
+    assert ok is True
+    assert "already deleted" in caplog.text
+    # The already-gone handle's bytes shouldn't count as newly recovered.
+    assert "200.0 B" in capsys.readouterr().out
+
+def test_execute_prune_mixed_batch_error_still_fails(monkeypatch):
+    # One "already gone" line plus one genuine error - must still be treated
+    # as a hard failure rather than silently swallowed.
+    def fake_run_mega(cmd, **kwargs):
+        class R:
+            returncode = 1
+            stderr = ("[2026-07-29_15-46-42.517882 cmd ERR  H:OLD1: "
+                       "No such file or directory]\n"
+                       "[2026-07-29_15-46-43.000000 cmd ERR  H:OLD2: Access denied]")
+        return R()
+
+    monkeypatch.setattr("megavers.prune.run_mega", fake_run_mega)
+
+    vf = make_vf("/docs/notes.txt", handle="H:CURRENT", old_versions=[
+        make_ov(version_num=2, handle="H:OLD2"),
         make_ov(version_num=1, handle="H:OLD1"),
     ])
     ok = execute_prune([vf], None, None)

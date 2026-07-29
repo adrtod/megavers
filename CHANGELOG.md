@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] — 2026-07-29
+
+### Changed
+- The cloud `path` argument (both commands) must now be absolute. A relative
+  path was previously forwarded to `mega-ls` as-is, which resolved it against
+  MEGAcmd's own remote working directory - hidden state shared across
+  unrelated `mega-*` invocations - making results non-reproducible.
+- `megavers-prune --yes`: a `mega-rm` batch where every error is "No such
+  file or directory" (the version was already deleted, e.g. by an earlier
+  `megavers-prune` run) is now a soft warning instead of a hard batch error -
+  the run still succeeds and the recovered-space total no longer counts
+  bytes from versions that were already gone. A batch with any other kind of
+  error is still treated as a hard failure.
+
 ## [0.1.1] — 2026-07-29
 
 ### Changed

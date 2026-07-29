@@ -20,8 +20,8 @@ from pathlib import Path, PurePosixPath
 
 from megavers import __version__
 from megavers.analyze import (
-    OldVersion, VersionedFile, check_logged_in, configure_logging, fetch_raw, parse,
-    fmt_size, fmt_date, parse_mtime, run_mega,
+    OldVersion, VersionedFile, check_logged_in, cloud_path, configure_logging, fetch_raw,
+    parse, fmt_size, fmt_date, parse_mtime, run_mega,
 )
 
 log = logging.getLogger(__name__)
@@ -306,6 +306,13 @@ def print_dry_run(
 
 BATCH_SIZE = 50
 
+# mega-rm reports this, per handle, when a version no longer exists - most
+# commonly because a previous megavers-prune run (or another client) already
+# deleted it. The tool's goal (that version not taking up space) is already
+# met, so this is treated as benign rather than a failure.
+NOT_FOUND_RE = re.compile(r'(H:[A-Za-z0-9]+):\s*No such file or directory')
+
+
 def execute_prune(
     selected: list[VersionedFile],
     keep_n: int | None,
@@ -317,6 +324,7 @@ def execute_prune(
     all_handles = [v.handle for _, vs in rows for v in vs if v.handle]
     no_handle   = sum(1 for _, vs in rows for v in vs if not v.handle)
     total_bytes = sum(v.size for _, vs in rows for v in vs)
+    handle_sizes = {v.handle: v.size for _, vs in rows for v in vs if v.handle}
 
     # Never delete a file's current version — old-version handles must never
     # collide with the current-version handles of the files we scanned.
@@ -337,21 +345,30 @@ def execute_prune(
 
     log.info("\nDeleting %d old version(s) across %d file(s) (%s to recover) ...",
              len(all_handles), len(rows), fmt_size(total_bytes))
-    return _run_batched("mega-rm", all_handles, total_bytes)
+    return _run_batched("mega-rm", all_handles, total_bytes, handle_sizes)
 
 
-def _run_batched(cmd: str, items: list[str], total_bytes: int) -> bool:
-    """Run `cmd -f <items...>` in batches. Returns True if every batch succeeded."""
+def _run_batched(cmd: str, items: list[str], total_bytes: int,
+                  handle_sizes: dict[str, int]) -> bool:
+    """Run `cmd -f <items...>` in batches. Returns True unless a batch hit an
+    error other than "already gone" (see NOT_FOUND_RE)."""
     errors = []
+    already_gone: list[str] = []
     for i in range(0, len(items), BATCH_SIZE):
         batch = items[i:i + BATCH_SIZE]
         end = min(i + BATCH_SIZE, len(items))
         print(f"  [{i + 1}-{end} / {len(items)}] ...", end=" ", flush=True)
         r = run_mega([cmd, "-f", *batch])
-        if r.returncode != 0:
+        if r.returncode == 0:
+            print("OK")
+            continue
+
+        lines = [ln for ln in r.stderr.strip().splitlines() if ln.strip()]
+        if any(not NOT_FOUND_RE.search(ln) for ln in lines):
             print("ERROR")
             errors.append((batch, r.stderr.strip()))
         else:
+            already_gone.extend(m.group(1) for m in NOT_FOUND_RE.finditer(r.stderr))
             print("OK")
 
     print()
@@ -363,8 +380,12 @@ def _run_batched(cmd: str, items: list[str], total_bytes: int) -> bool:
                 print(f"    {item}")
         return False
 
+    if already_gone:
+        log.warning("%d version(s) were already deleted (e.g. by an earlier "
+                    "megavers-prune run) and skipped - not a problem.", len(already_gone))
+    recovered_bytes = total_bytes - sum(handle_sizes.get(h, 0) for h in already_gone)
     print(f"Done. {len(items)} version(s) processed.")
-    print(f"Recovered approximately {fmt_size(total_bytes)}.")
+    print(f"Recovered approximately {fmt_size(recovered_bytes)}.")
     return True
 
 
@@ -412,8 +433,8 @@ examples:
     )
 
     src = parser.add_argument_group("source")
-    src.add_argument("path", nargs="?", default="/",
-                     help="Cloud path to scan (default: /)")
+    src.add_argument("path", nargs="?", default="/", type=cloud_path,
+                     help="Cloud path to scan, absolute (default: /)")
     src.add_argument("--from-json", metavar="FILE",
                      help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,

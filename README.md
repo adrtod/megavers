@@ -22,7 +22,7 @@ usage: megavers-analyze [-h] [--version] [--top N] [--json FILE] [--raw-dump FIL
                          [-v | -q] [path]
 
 positional arguments:
-  path           Cloud path to analyze (default: /)
+  path           Cloud path to analyze, absolute (default: /)
 
 options:
   --version      Show version and exit
@@ -132,7 +132,7 @@ usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
                          [--version] [-v | -q] [path]
 
 source:
-  path                  Cloud path to scan (default: /)
+  path                  Cloud path to scan, absolute (default: /)
   --from-json FILE      Load from megavers-analyze --json output (skips re-scanning)
   --config FILE         Config file path (default: ./.megavers.toml → ~/.config/megavers/config.toml → bundled)
 
