@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.2] — 2026-07-29
 
 ### Changed
 - The cloud `path` argument (both commands) must now be absolute. A relative
