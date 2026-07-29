@@ -1,11 +1,12 @@
 # megavers config
 #
-# This is the bundled default, used only when no config.toml is found in the
-# current directory or in ~/.config/megavers/config.toml. It ships with a few
-# generally-applicable filters active (git internals, OS/editor junk files,
-# Python caches) and one commented-out example for a more workflow-specific
-# case. To customize, copy this file to ~/.config/megavers/config.toml and
-# edit it there.
+# This is the bundled default, used only when no .megavers.toml is found in
+# the current directory and no config.toml is found in
+# ~/.config/megavers/config.toml. It ships with a few generally-applicable
+# filters active (git internals, OS/editor junk files, Python caches) and one
+# commented-out example for a more workflow-specific case. To customize, run
+# `megavers-prune --init-config`, or copy this file to ./.megavers.toml or
+# ~/.config/megavers/config.toml and edit it there.
 #
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.

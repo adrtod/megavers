@@ -65,8 +65,9 @@ def test_build_parser_path_positional():
 # ── Config file lookup precedence ─────────────────────────────────────────────
 
 def test_find_user_config_none_when_absent(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("megavers.prune.Path.home", lambda: tmp_path / "nonexistent-home")
+    monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
+        tmp_path / ".megavers.toml", tmp_path / "nonexistent-home" / "config.toml",
+    ])
     assert find_user_config() is None
 
 def test_find_user_config_prefers_cwd_over_home(tmp_path, monkeypatch):
@@ -74,17 +75,17 @@ def test_find_user_config_prefers_cwd_over_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     cwd.mkdir()
     home.mkdir()
-    (cwd / "config.toml").write_text("[[filter]]\nname='cwd'\n")
+    (cwd / ".megavers.toml").write_text("[[filter]]\nname='cwd'\n")
     (home / ".config" / "megavers").mkdir(parents=True)
     (home / ".config" / "megavers" / "config.toml").write_text("[[filter]]\nname='home'\n")
 
     monkeypatch.chdir(cwd)
     monkeypatch.setattr("megavers.prune.Path.home", lambda: home)
     monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
-        cwd / "config.toml", home / ".config" / "megavers" / "config.toml",
+        cwd / ".megavers.toml", home / ".config" / "megavers" / "config.toml",
     ])
     found = find_user_config()
-    assert found == cwd / "config.toml"
+    assert found == cwd / ".megavers.toml"
 
 def test_load_config_bundled_fallback_when_path_is_none():
     # The bundled default ships with generally-applicable filters active;

@@ -2,8 +2,8 @@
 """
 MEGA Version Pruner
 
-Selectively deletes old file versions based on filters defined in config.toml.
-Only previews by default — pass --yes to actually delete.
+Selectively deletes old file versions based on filters defined in a config file
+(.megavers.toml). Only previews by default — pass --yes to actually delete.
 
 Keeps the current (latest) version of every file untouched.
 """
@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 DEFAULT_USER_CONFIG_PATH = Path.home() / ".config" / "megavers" / "config.toml"
 
 USER_CONFIG_SEARCH_PATH = [
-    Path.cwd() / "config.toml",
+    Path.cwd() / ".megavers.toml",
     DEFAULT_USER_CONFIG_PATH,
 ]
 
@@ -202,7 +202,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
         active_fns.append(lambda vf, exts=exts: extension_suffix(vf.path) in exts)
 
     if not active_fns:
-        log.error("Error: no active filters. Check your config.toml or --filter arguments.")
+        log.error("Error: no active filters. Check your config file or --filter arguments.")
         sys.exit(1)
 
     # OR logic across all active filters
@@ -378,7 +378,7 @@ def _non_negative_int(s: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prune MEGA file version histories (requires MEGAcmd). "
-                    "Filters are defined in config.toml. "
+                    "Filters are defined in a config file (.megavers.toml). "
                     "Only previews by default — pass --yes to actually delete.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -416,7 +416,7 @@ examples:
                      help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
                      help="Config file path. Default search order: "
-                          "./config.toml → ~/.config/megavers/config.toml "
+                          "./.megavers.toml → ~/.config/megavers/config.toml "
                           "→ bundled default")
 
     flt = parser.add_argument_group("filters")

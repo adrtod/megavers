@@ -90,11 +90,11 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 
 "Overhead vs. current file size" is the ratio of old-version space to current-file space, computed only over files that have old versions — it does not include files with a single version.
 
-### `config.toml` — Filter definitions
+### `.megavers.toml` — Filter definitions
 
-Filters are defined in `config.toml`. Each filter has a name and at least one of: a list of path substrings (`path_contains`, case-sensitive, matching MEGA's own path semantics) or a list of extensions. If both are set, both must match (AND). Across filters, any match selects the file (OR). A filter with neither `path_contains` nor `extensions` is rejected at startup, since it would otherwise match every file in the account.
+Filters are defined in a config file. Each filter has a name and at least one of: a list of path substrings (`path_contains`, case-sensitive, matching MEGA's own path semantics) or a list of extensions. If both are set, both must match (AND). Across filters, any match selects the file (OR). A filter with neither `path_contains` nor `extensions` is rejected at startup, since it would otherwise match every file in the account.
 
-The bundled default ships with a few filters active that are broadly applicable regardless of your workflow — git internals, common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), and Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.). More workflow-specific examples (like `results` below) are included commented out. Customize by creating your own `./config.toml` or `~/.config/megavers/config.toml`, or use `--path-contains` / `--ext` on the command line.
+The bundled default ships with a few filters active that are broadly applicable regardless of your workflow — git internals, common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), and Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.). More workflow-specific examples (like `results` below) are included commented out. Customize by creating your own `./.megavers.toml` or `~/.config/megavers/config.toml`, or use `--path-contains` / `--ext` on the command line.
 
 Run `megavers-prune --init-config` to copy the bundled default to `~/.config/megavers/config.toml` as a starting point (pass a path to write it elsewhere). It refuses to overwrite an existing file.
 
@@ -120,7 +120,7 @@ Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
 ### `megavers-prune` — Version pruner
 
-Deletes old version histories for files matched by filters in `config.toml` using [MEGAcmd](https://github.com/meganz/MEGAcmd). **Only previews by default — pass `--yes` to actually delete.** The current (latest) version of every file is always kept.
+Deletes old version histories for files matched by filters in `.megavers.toml` using [MEGAcmd](https://github.com/meganz/MEGAcmd). **Only previews by default — pass `--yes` to actually delete.** The current (latest) version of every file is always kept.
 
 > **Warning:** deletion is permanent. MEGA does not keep a recycle bin for pruned versions — once deleted with `--yes`, old versions cannot be recovered. Always run without `--yes` first (or with `--dry-run`) to review what would be deleted.
 
@@ -134,7 +134,7 @@ usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
 source:
   path                  Cloud path to scan (default: /)
   --from-json FILE      Load from megavers-analyze --json output (skips re-scanning)
-  --config FILE         Config file path (default: ./config.toml → ~/.config/megavers/config.toml → bundled)
+  --config FILE         Config file path (default: ./.megavers.toml → ~/.config/megavers/config.toml → bundled)
 
 filters:
   --filter NAME         Activate only this config filter by name (repeatable;
@@ -166,7 +166,7 @@ mode:
 # Preview what would be deleted (default — nothing is deleted without --yes)
 megavers-prune
 
-# Actually delete, using all filters from config.toml
+# Actually delete, using all filters from .megavers.toml
 megavers-prune --yes
 
 # Run only the 'git' filter

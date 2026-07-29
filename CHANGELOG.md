@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The cwd-searched config file is now `.megavers.toml` (was `config.toml`) so
+  the file is self-identifying when found in a project directory, matching
+  the convention of tools like `.flake8`/`.prettierrc`. The `~/.config/megavers/`
+  location is unaffected — that directory already namespaces it.
+
 ### Added
 - `-v`/`--verbose` and `-q`/`--quiet` flags on both commands. Progress and
   warning/error messages now go through `logging` to stderr instead of `print`,
