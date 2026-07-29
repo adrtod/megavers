@@ -7,7 +7,7 @@ import pytest
 
 from megavers.analyze import OldVersion, VersionedFile
 from megavers.prune import (
-    build_parser, find_user_config, load_config, load_versioned,
+    build_parser, find_user_config, init_config, load_config, load_versioned,
     execute_prune, BUNDLED_CONFIG_LABEL,
 )
 
@@ -104,6 +104,23 @@ def test_load_config_from_explicit_path(tmp_path):
 
 def test_bundled_config_label_used_when_no_user_config():
     assert BUNDLED_CONFIG_LABEL == "<bundled default>"
+
+
+# ── --init-config ──────────────────────────────────────────────────────────────
+
+def test_init_config_writes_bundled_default(tmp_path):
+    dest = tmp_path / "nested" / "config.toml"
+    init_config(dest)
+    filters = load_config(dest)
+    assert filters == load_config(None)
+
+def test_init_config_refuses_to_overwrite(tmp_path):
+    dest = tmp_path / "config.toml"
+    dest.write_text("[[filter]]\nname = 'mine'\npath_contains = ['/x/']\n")
+    with pytest.raises(SystemExit):
+        init_config(dest)
+    # Original content must survive the refused overwrite.
+    assert "mine" in dest.read_text()
 
 
 # ── --from-json round-trip ────────────────────────────────────────────────────

@@ -26,9 +26,11 @@ from megavers.analyze import (
 
 log = logging.getLogger(__name__)
 
+DEFAULT_USER_CONFIG_PATH = Path.home() / ".config" / "megavers" / "config.toml"
+
 USER_CONFIG_SEARCH_PATH = [
     Path.cwd() / "config.toml",
-    Path.home() / ".config" / "megavers" / "config.toml",
+    DEFAULT_USER_CONFIG_PATH,
 ]
 
 BUNDLED_CONFIG_LABEL = "<bundled default>"
@@ -44,14 +46,34 @@ def find_user_config() -> Path | None:
     return None
 
 
+def bundled_config_text() -> str:
+    return files("megavers").joinpath("config.toml").read_text("utf-8")
+
+
 def load_config(path: Path | None) -> list[dict]:
     """Load filters from `path`, or from the bundled default config when `path` is None."""
     if path is None:
-        data = tomllib.loads(files("megavers").joinpath("config.toml").read_text("utf-8"))
+        data = tomllib.loads(bundled_config_text())
     else:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)
     return data.get("filter", [])
+
+
+def init_config(dest: Path) -> None:
+    """Copy the bundled default config to `dest` so the user has a starting
+    point to customize, without touching the package-installed original."""
+    if dest.exists():
+        log.error("Error: %s already exists. Remove it, edit it directly, or "
+                  "pass a different --init-config path.", dest)
+        sys.exit(1)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(bundled_config_text(), encoding="utf-8")
+    print(f"Wrote default config to: {dest}")
+    if dest in USER_CONFIG_SEARCH_PATH:
+        print("megavers-prune will pick it up automatically. Edit it to customize filters.")
+    else:
+        print(f"Pass --config {dest} to use it (it's outside the default search path).")
 
 
 def extension_suffix(path: str) -> str:
@@ -361,6 +383,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
+  # Write a customizable config to ~/.config/megavers/config.toml
+  megavers-prune --init-config
+
   # Preview what would be deleted (default — nothing is deleted without --yes)
   megavers-prune
 
@@ -420,6 +445,11 @@ examples:
                            "is only useful to make an already-explicit preview clearer).")
     mode.add_argument("--list-filters", action="store_true",
                       help="List filters defined in config and exit.")
+    mode.add_argument("--init-config", nargs="?", const=DEFAULT_USER_CONFIG_PATH,
+                      type=Path, metavar="PATH",
+                      help="Write a copy of the bundled default config to PATH "
+                           f"(default: {DEFAULT_USER_CONFIG_PATH}) and exit, so you "
+                           "have a starting point to customize filters.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     verbosity = parser.add_mutually_exclusive_group()
@@ -435,6 +465,10 @@ examples:
 def main() -> None:
     args = build_parser().parse_args()
     configure_logging(args.verbose, args.quiet)
+
+    if args.init_config is not None:
+        init_config(args.init_config)
+        return
 
     config_path = args.config or find_user_config()
     config_filters = load_config(config_path)

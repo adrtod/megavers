@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
   warning/error messages now go through `logging` to stderr instead of `print`,
   so stdout carries only the report/JSON output; `--verbose` additionally logs
   the underlying `mega-*` commands being run.
+- `megavers-prune --init-config [PATH]` — writes a copy of the bundled default
+  config to `~/.config/megavers/config.toml` (or `PATH`) as a starting point
+  for customization. Refuses to overwrite an existing file.
 
 ## [0.1.0] — 2026-07-28
 
