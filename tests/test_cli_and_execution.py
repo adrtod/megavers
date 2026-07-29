@@ -1,12 +1,13 @@
 """Tests for CLI argument parsing, config file lookup, and the deletion path
 (execute_prune / _run_batched) — the pieces that actually talk to MEGAcmd."""
 
+import argparse
 import json
 from pathlib import Path
 
 import pytest
 
-from megavers.analyze import OldVersion, VersionedFile
+from megavers.analyze import OldVersion, VersionedFile, cloud_path
 from megavers.prune import (
     build_parser, find_user_config, init_config, load_config, load_versioned,
     execute_prune, BUNDLED_CONFIG_LABEL,
@@ -61,6 +62,21 @@ def test_build_parser_repeatable_filter():
 def test_build_parser_path_positional():
     args = build_parser().parse_args(["/some/path"])
     assert args.path == "/some/path"
+
+def test_build_parser_rejects_relative_cloud_path():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["foo/bar"])
+
+
+# ── cloud_path validator (shared by both CLIs) ────────────────────────────────
+
+def test_cloud_path_accepts_absolute():
+    assert cloud_path("/some/path") == "/some/path"
+    assert cloud_path("/") == "/"
+
+def test_cloud_path_rejects_relative():
+    with pytest.raises(argparse.ArgumentTypeError):
+        cloud_path("foo/bar")
 
 
 # ── Config file lookup precedence ─────────────────────────────────────────────

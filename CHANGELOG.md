@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- The cloud `path` argument (both commands) must now be absolute. A relative
+  path was previously forwarded to `mega-ls` as-is, which resolved it against
+  MEGAcmd's own remote working directory - hidden state shared across
+  unrelated `mega-*` invocations - making results non-reproducible.
+
 ## [0.1.1] — 2026-07-29
 
 ### Changed

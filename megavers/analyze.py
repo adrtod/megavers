@@ -375,14 +375,25 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def cloud_path(s: str) -> str:
+    """Reject relative cloud paths. MEGAcmd would otherwise resolve them against
+    its own remote working directory - hidden, stateful, and shared across
+    unrelated mega-* invocations - which makes results non-reproducible."""
+    if not s.startswith("/"):
+        raise argparse.ArgumentTypeError(
+            f"cloud path must be absolute (start with '/'): {s!r}"
+        )
+    return s
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Analyze MEGA versioning space usage (requires MEGAcmd)."
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
-        "path", nargs="?", default="/",
-        help="Cloud path to analyze (default: /)",
+        "path", nargs="?", default="/", type=cloud_path,
+        help="Cloud path to analyze, absolute (default: /)",
     )
     parser.add_argument("--top",      type=int, default=20, metavar="N",
                         help="Number of top files to display (default: 20)")

@@ -20,8 +20,8 @@ from pathlib import Path, PurePosixPath
 
 from megavers import __version__
 from megavers.analyze import (
-    OldVersion, VersionedFile, check_logged_in, configure_logging, fetch_raw, parse,
-    fmt_size, fmt_date, parse_mtime, run_mega,
+    OldVersion, VersionedFile, check_logged_in, cloud_path, configure_logging, fetch_raw,
+    parse, fmt_size, fmt_date, parse_mtime, run_mega,
 )
 
 log = logging.getLogger(__name__)
@@ -412,8 +412,8 @@ examples:
     )
 
     src = parser.add_argument_group("source")
-    src.add_argument("path", nargs="?", default="/",
-                     help="Cloud path to scan (default: /)")
+    src.add_argument("path", nargs="?", default="/", type=cloud_path,
+                     help="Cloud path to scan, absolute (default: /)")
     src.add_argument("--from-json", metavar="FILE",
                      help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
