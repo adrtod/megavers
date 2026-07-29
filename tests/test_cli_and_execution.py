@@ -258,6 +258,49 @@ def test_execute_prune_returns_false_on_batch_error(monkeypatch):
     ok = execute_prune([vf], None, None)
     assert ok is False
 
+def test_execute_prune_treats_already_gone_as_soft_warning(monkeypatch, caplog, capsys):
+    # mega-rm returns nonzero for the batch, but every error line is "No such
+    # file or directory" (already deleted by an earlier run) - not a real failure.
+    def fake_run_mega(cmd, **kwargs):
+        class R:
+            returncode = 1
+            stderr = ("[2026-07-29_15-46-42.517882 cmd ERR  H:OLD1: "
+                       "No such file or directory]")
+        return R()
+
+    monkeypatch.setattr("megavers.prune.run_mega", fake_run_mega)
+
+    vf = make_vf("/docs/notes.txt", handle="H:CURRENT", old_versions=[
+        make_ov(version_num=2, handle="H:OLD2", size=200),
+        make_ov(version_num=1, handle="H:OLD1", size=100),
+    ])
+    ok = execute_prune([vf], None, None)
+
+    assert ok is True
+    assert "already deleted" in caplog.text
+    # The already-gone handle's bytes shouldn't count as newly recovered.
+    assert "200.0 B" in capsys.readouterr().out
+
+def test_execute_prune_mixed_batch_error_still_fails(monkeypatch):
+    # One "already gone" line plus one genuine error - must still be treated
+    # as a hard failure rather than silently swallowed.
+    def fake_run_mega(cmd, **kwargs):
+        class R:
+            returncode = 1
+            stderr = ("[2026-07-29_15-46-42.517882 cmd ERR  H:OLD1: "
+                       "No such file or directory]\n"
+                       "[2026-07-29_15-46-43.000000 cmd ERR  H:OLD2: Access denied]")
+        return R()
+
+    monkeypatch.setattr("megavers.prune.run_mega", fake_run_mega)
+
+    vf = make_vf("/docs/notes.txt", handle="H:CURRENT", old_versions=[
+        make_ov(version_num=2, handle="H:OLD2"),
+        make_ov(version_num=1, handle="H:OLD1"),
+    ])
+    ok = execute_prune([vf], None, None)
+    assert ok is False
+
 def test_execute_prune_skips_versions_without_handles(monkeypatch):
     calls = []
 

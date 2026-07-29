@@ -162,3 +162,36 @@ so it can't be misread as an error. Conclusion: this was already correctly
 handled by MEGAcmd + megavers' existing stdout/stderr separation; building
 our own server-start logic would have been solving an already-solved
 problem.
+
+## "No such file or directory" from mega-rm is a soft warning, not a hard error
+
+**Context:** A user reported `megavers-prune --yes` batch errors like
+`H:RVtSnSIT: No such file or directory` after re-running the same prune
+command against the same tree more than once. `mega-rm -f H1 H2 ...`
+returns nonzero when *any* handle in the batch can't be found, even though
+it still deletes everything else in the batch that does exist. The
+pre-existing code treated any nonzero batch as a hard failure: printed an
+alarming "Completed with N batch error(s)" dump and made the whole run
+exit 1.
+
+**Decision:** In `_run_batched()` (`megavers/prune.py`), classify each
+failed batch by its stderr content. If every error line matches
+`NOT_FOUND_RE` (`H:<handle>: No such file or directory`), treat the batch
+as successful: log one `log.warning()` summary of how many versions were
+already gone, and subtract their bytes from the "Recovered approximately"
+total (they weren't recovered *by this run*). If a batch has any other kind
+of error line mixed in, keep the existing hard-failure behavior unchanged
+(full dump, `execute_prune()` returns `False`, `sys.exit(1)`).
+
+**Rationale:** "No such file or directory" means the tool's actual goal for
+that handle — the version not taking up space — is already achieved; it's
+not a sign anything went wrong, just that the work was already done
+(typically by an earlier `megavers-prune` run over the same account state,
+confirmed as the cause in this case). Failing the whole run and dumping a
+scary-looking error list for a benign, common condition (re-running prune
+more than once) is bad UX and could make users distrust the tool's error
+reporting in general. Deliberately kept conservative in the other
+direction, though: a batch is only downgraded if *every* error line in it
+is a "not found," so a real error co-occurring with some already-gone
+handles still fails loudly rather than being silently swallowed alongside
+the benign ones.
