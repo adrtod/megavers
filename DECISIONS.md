@@ -137,3 +137,28 @@ factor: `megavers-prune` is already published on PyPI (v0.1.1) as the entry
 point and referenced throughout the README/CHANGELOG, so a rename now has a
 real (if small) cost, unlike the config-filename rename which happened in
 the zero-cost pre-release window.
+
+## No code needed: MEGAcmd server auto-start
+
+**Context:** `PLAN.md` carried an open item to auto-start `mega-cmd-server`
+in the background before megavers' first `mega-*` call, on the assumption
+that a `mega-*` command fails if the server isn't already running.
+
+**Decision:** No code added. Verified the assumption was wrong and closed
+the item.
+
+**Rationale:** Inspected the MEGAcmd client binaries directly (`strings` on
+`mega-exec`, which every `mega-*` wrapper script like `mega-ls`/`mega-whoami`
+shells out to) and found MEGAcmd already auto-starts `mega-cmd-server` on
+first use. Verified empirically: stopped the server with `mega-quit`
+(graceful — keeps the session file, so no re-login needed) and ran a cold
+`mega-whoami` through megavers' own `run_mega()`/`check_logged_in()` — it
+auto-started the server, blocked until ready, and returned exit code 0 on
+the *first* call (~0.76s cold vs. ~8ms warm; no retry needed). The
+"Initiating MEGAcmd server in background..." notice goes to stderr only,
+never touching stdout, and doesn't match any of megavers' existing
+stderr-substring checks (e.g. `check_logged_in()`'s `"Not logged in"` check),
+so it can't be misread as an error. Conclusion: this was already correctly
+handled by MEGAcmd + megavers' existing stdout/stderr separation; building
+our own server-start logic would have been solving an already-solved
+problem.
