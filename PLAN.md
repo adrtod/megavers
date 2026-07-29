@@ -5,7 +5,7 @@
 - [x] `pyproject.toml` — package metadata, `megavers-analyze` and `megavers-prune` CLI entry points
 - [x] Config file lookup: current dir → `~/.config/megavers/config.toml` → bundled default
 - [x] Update GitHub URL in `pyproject.toml` once repo is created
-- [ ] Publish to PyPI so users can `pip install megavers`
+- [x] Publish to PyPI so users can `pip install megavers` — [v0.1.0 live](https://pypi.org/project/megavers/0.1.0/)
 
 ## Pre-publish review (2026-07-28)
 
@@ -54,4 +54,4 @@ PyPI release. All must-fix and should-fix items addressed:
 ## Lower priority
 
 - [ ] `CONTRIBUTING.md`
-- [ ] `--verbose` / `--quiet` flags using `logging` instead of `print`
+- [x] `--verbose` / `--quiet` flags using `logging` instead of `print`

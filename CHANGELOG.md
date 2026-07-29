@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] — 2026-07-29
+
+### Changed
+- The cwd-searched config file is now `.megavers.toml` (was `config.toml`) so
+  the file is self-identifying when found in a project directory, matching
+  the convention of tools like `.flake8`/`.prettierrc`. The `~/.config/megavers/`
+  location is unaffected — that directory already namespaces it.
+
+### Added
+- `-v`/`--verbose` and `-q`/`--quiet` flags on both commands. Progress and
+  warning/error messages now go through `logging` to stderr instead of `print`,
+  so stdout carries only the report/JSON output; `--verbose` additionally logs
+  the underlying `mega-*` commands being run.
+- `megavers-prune --init-config [PATH]` — writes a copy of the bundled default
+  config to `~/.config/megavers/config.toml` (or `PATH`) as a starting point
+  for customization. Refuses to overwrite an existing file. Passing an
+  existing directory (e.g. `.`) writes `.megavers.toml` inside it rather than
+  refusing.
+
 ## [0.1.0] — 2026-07-28
 
 Initial release.

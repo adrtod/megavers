@@ -2,8 +2,8 @@
 """
 MEGA Version Pruner
 
-Selectively deletes old file versions based on filters defined in config.toml.
-Only previews by default — pass --yes to actually delete.
+Selectively deletes old file versions based on filters defined in a config file
+(.megavers.toml). Only previews by default — pass --yes to actually delete.
 
 Keeps the current (latest) version of every file untouched.
 """
@@ -11,6 +11,7 @@ Keeps the current (latest) version of every file untouched.
 import re
 import sys
 import json
+import logging
 import argparse
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -19,13 +20,17 @@ from pathlib import Path, PurePosixPath
 
 from megavers import __version__
 from megavers.analyze import (
-    OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
-    parse_mtime, run_mega,
+    OldVersion, VersionedFile, check_logged_in, configure_logging, fetch_raw, parse,
+    fmt_size, fmt_date, parse_mtime, run_mega,
 )
 
+log = logging.getLogger(__name__)
+
+DEFAULT_USER_CONFIG_PATH = Path.home() / ".config" / "megavers" / "config.toml"
+
 USER_CONFIG_SEARCH_PATH = [
-    Path.cwd() / "config.toml",
-    Path.home() / ".config" / "megavers" / "config.toml",
+    Path.cwd() / ".megavers.toml",
+    DEFAULT_USER_CONFIG_PATH,
 ]
 
 BUNDLED_CONFIG_LABEL = "<bundled default>"
@@ -41,14 +46,36 @@ def find_user_config() -> Path | None:
     return None
 
 
+def bundled_config_text() -> str:
+    return files("megavers").joinpath("config.toml").read_text("utf-8")
+
+
 def load_config(path: Path | None) -> list[dict]:
     """Load filters from `path`, or from the bundled default config when `path` is None."""
     if path is None:
-        data = tomllib.loads(files("megavers").joinpath("config.toml").read_text("utf-8"))
+        data = tomllib.loads(bundled_config_text())
     else:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)
     return data.get("filter", [])
+
+
+def init_config(dest: Path) -> None:
+    """Copy the bundled default config to `dest` so the user has a starting
+    point to customize, without touching the package-installed original."""
+    if dest.is_dir():
+        dest = dest / ".megavers.toml"
+    if dest.exists():
+        log.error("Error: %s already exists. Remove it, edit it directly, or "
+                  "pass a different --init-config path.", dest)
+        sys.exit(1)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(bundled_config_text(), encoding="utf-8")
+    print(f"Wrote default config to: {dest}")
+    if dest.resolve() in (p.resolve() for p in USER_CONFIG_SEARCH_PATH):
+        print("megavers-prune will pick it up automatically. Edit it to customize filters.")
+    else:
+        print(f"Pass --config {dest} to use it (it's outside the default search path).")
 
 
 def extension_suffix(path: str) -> str:
@@ -72,16 +99,16 @@ def validate_filters(filters: list[dict]) -> None:
         label = f.get("name") or f"filter #{i + 1}"
         unknown = set(f) - FILTER_KEYS
         if unknown:
-            print(f"Error: unrecognized key(s) in config filter {label!r}: "
-                  f"{sorted(unknown)}", file=sys.stderr)
+            log.error("Error: unrecognized key(s) in config filter %r: %s",
+                      label, sorted(unknown))
             sys.exit(1)
         if not f.get("name"):
-            print(f"Error: {label} is missing a 'name'.", file=sys.stderr)
+            log.error("Error: %s is missing a 'name'.", label)
             sys.exit(1)
         if not f.get("path_contains") and not f.get("extensions"):
-            print(f"Error: config filter {label!r} has neither 'path_contains' nor "
-                  "'extensions' set, so it would match every file. Add at least one, "
-                  "or remove the filter.", file=sys.stderr)
+            log.error("Error: config filter %r has neither 'path_contains' nor "
+                      "'extensions' set, so it would match every file. Add at least "
+                      "one, or remove the filter.", label)
             sys.exit(1)
 
 
@@ -128,20 +155,20 @@ def load_versioned(args) -> dict[str, VersionedFile]:
                 )
                 out[vf.path] = vf
         except FileNotFoundError:
-            print(f"Error: {args.from_json} not found.", file=sys.stderr)
+            log.error("Error: %s not found.", args.from_json)
             sys.exit(1)
         except (json.JSONDecodeError, KeyError, TypeError) as e:
-            print(f"Error: {args.from_json} is not a valid megavers-analyze --json "
-                  f"file ({e}).", file=sys.stderr)
+            log.error("Error: %s is not a valid megavers-analyze --json file (%s).",
+                      args.from_json, e)
             sys.exit(1)
-        print(f"Loaded {len(out)} versioned files from {args.from_json}.")
+        log.info("Loaded %d versioned files from %s.", len(out), args.from_json)
         return out
     else:
-        print(f"Scanning {args.path!r} ...", flush=True)
+        log.info("Scanning %r ...", args.path)
         lines = fetch_raw(args.path)
-        print(f"  {len(lines)} lines received.", flush=True)
+        log.info("  %d lines received.", len(lines))
         versioned = parse(lines)
-        print(f"  {len(versioned)} files have old versions.")
+        log.info("  %d files have old versions.", len(versioned))
         return versioned
 
 
@@ -150,9 +177,9 @@ def warn_on_count_mismatches(versioned: dict[str, VersionedFile]) -> None:
     e.g. versions owned by a contact, which deleteversions/rm cannot remove."""
     for vf in versioned.values():
         if vf.old_count != vf.total_versions - 1:
-            print(f"Warning: {vf.path} reports {vf.total_versions} total versions "
-                  f"but only {vf.old_count} were parsed - some old versions may not "
-                  "be deletable (e.g. owned by a contact).", file=sys.stderr)
+            log.warning("Warning: %s reports %d total versions but only %d were "
+                        "parsed - some old versions may not be deletable (e.g. "
+                        "owned by a contact).", vf.path, vf.total_versions, vf.old_count)
 
 
 # ── Filtering ─────────────────────────────────────────────────────────────────
@@ -177,8 +204,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
         active_fns.append(lambda vf, exts=exts: extension_suffix(vf.path) in exts)
 
     if not active_fns:
-        print("Error: no active filters. Check your config.toml or --filter arguments.",
-              file=sys.stderr)
+        log.error("Error: no active filters. Check your config file or --filter arguments.")
         sys.exit(1)
 
     # OR logic across all active filters
@@ -188,7 +214,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
         try:
             threshold = parse_size(args.min_version_size)
         except ValueError as e:
-            print(f"Error: --min-version-size: {e}", file=sys.stderr)
+            log.error("Error: --min-version-size: %s", e)
             sys.exit(1)
         selected = [vf for vf in selected if vf.version_size >= threshold]
 
@@ -297,20 +323,20 @@ def execute_prune(
     current_handles = {vf.handle for vf, _ in rows if vf.handle}
     unsafe = [h for h in all_handles if h in current_handles]
     if unsafe:
-        print(f"Refusing to continue: {len(unsafe)} version(s) scheduled for deletion "
-              "match a file's current-version handle. This should not happen - "
-              "aborting without deleting anything.", file=sys.stderr)
+        log.error("Refusing to continue: %d version(s) scheduled for deletion match "
+                  "a file's current-version handle. This should not happen - "
+                  "aborting without deleting anything.", len(unsafe))
         return False
 
     if no_handle:
-        print(f"Warning: {no_handle} version(s) have no handle and will be skipped. "
-              "Re-scan without --from-json to get handles.", file=sys.stderr)
+        log.warning("Warning: %d version(s) have no handle and will be skipped. "
+                    "Re-scan without --from-json to get handles.", no_handle)
     if not all_handles:
         print("No deletable versions found (no handles available).")
         return True
 
-    print(f"\nDeleting {len(all_handles)} old version(s) across {len(rows)} file(s) "
-          f"({fmt_size(total_bytes)} to recover) ...")
+    log.info("\nDeleting %d old version(s) across %d file(s) (%s to recover) ...",
+             len(all_handles), len(rows), fmt_size(total_bytes))
     return _run_batched("mega-rm", all_handles, total_bytes)
 
 
@@ -354,11 +380,14 @@ def _non_negative_int(s: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prune MEGA file version histories (requires MEGAcmd). "
-                    "Filters are defined in config.toml. "
+                    "Filters are defined in a config file (.megavers.toml). "
                     "Only previews by default — pass --yes to actually delete.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
+  # Write a customizable config to ~/.config/megavers/config.toml
+  megavers-prune --init-config
+
   # Preview what would be deleted (default — nothing is deleted without --yes)
   megavers-prune
 
@@ -389,7 +418,7 @@ examples:
                      help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
                      help="Config file path. Default search order: "
-                          "./config.toml → ~/.config/megavers/config.toml "
+                          "./.megavers.toml → ~/.config/megavers/config.toml "
                           "→ bundled default")
 
     flt = parser.add_argument_group("filters")
@@ -418,13 +447,30 @@ examples:
                            "is only useful to make an already-explicit preview clearer).")
     mode.add_argument("--list-filters", action="store_true",
                       help="List filters defined in config and exit.")
+    mode.add_argument("--init-config", nargs="?", const=DEFAULT_USER_CONFIG_PATH,
+                      type=Path, metavar="PATH",
+                      help="Write a copy of the bundled default config to PATH "
+                           f"(default: {DEFAULT_USER_CONFIG_PATH}) and exit, so you "
+                           "have a starting point to customize filters.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-v", "--verbose", action="store_true",
+                           help="Show debug output (e.g. the mega-* commands being run)")
+    verbosity.add_argument("-q", "--quiet", action="store_true",
+                           help="Suppress progress messages; only warnings/errors and "
+                                "the report are shown")
 
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    configure_logging(args.verbose, args.quiet)
+
+    if args.init_config is not None:
+        init_config(args.init_config)
+        return
 
     config_path = args.config or find_user_config()
     config_filters = load_config(config_path)

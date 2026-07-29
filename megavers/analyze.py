@@ -9,12 +9,24 @@ which files consume the most space through their version history.
 import re
 import sys
 import json
+import logging
 import argparse
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from megavers import __version__
+
+log = logging.getLogger(__name__)
+
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+
+def configure_logging(verbose: bool, quiet: bool) -> None:
+    """Status/progress messages go through `log` to stderr; report output stays
+    on stdout via print(), so redirecting stdout captures only the results."""
+    level = logging.DEBUG if verbose else logging.WARNING if quiet else logging.INFO
+    logging.basicConfig(level=level, format="%(message)s", stream=sys.stderr)
 
 
 # ── Output line patterns ──────────────────────────────────────────────────────
@@ -91,18 +103,18 @@ def run_mega(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     kwargs.setdefault("encoding", "utf-8")
     kwargs.setdefault("errors", "replace")
     kwargs.setdefault("stdin", subprocess.DEVNULL)
+    log.debug("Running: %s", " ".join(cmd))
     try:
         return subprocess.run(cmd, **kwargs)
     except FileNotFoundError:
-        print(MEGACMD_INSTALL_HINT, file=sys.stderr)
+        log.error(MEGACMD_INSTALL_HINT)
         sys.exit(1)
 
 
 def check_logged_in() -> None:
     r = run_mega(["mega-whoami"])
     if "Not logged in" in r.stderr or "Not logged in" in r.stdout:
-        print("Not logged into MEGAcmd. Run:  mega-login <email> <password>",
-              file=sys.stderr)
+        log.error("Not logged into MEGAcmd. Run:  mega-login <email> <password>")
         sys.exit(1)
 
 
@@ -111,10 +123,10 @@ def fetch_raw(path: str) -> list[str]:
                   "--time-format=ISO6081_WITH_TIME", path])
     if r.returncode != 0:
         if not r.stdout.strip():
-            print(f"mega-ls failed (exit code {r.returncode}):\n{r.stderr}", file=sys.stderr)
+            log.error("mega-ls failed (exit code %d):\n%s", r.returncode, r.stderr)
             sys.exit(1)
-        print(f"Warning: mega-ls exited with code {r.returncode} - output may be "
-              f"incomplete:\n{r.stderr}", file=sys.stderr)
+        log.warning("mega-ls exited with code %d - output may be incomplete:\n%s",
+                    r.returncode, r.stderr)
     return r.stdout.splitlines()
 
 
@@ -181,8 +193,8 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
     def close_section() -> None:
         close_block()
         for name, entry in pending.items():
-            print(f"Warning: {name!r} lists {entry['vers']} versions but no "
-                  f"matching 'Versions of' block was found - skipping.", file=sys.stderr)
+            log.warning("%r lists %d versions but no matching 'Versions of' block "
+                        "was found - skipping.", name, entry["vers"])
         pending.clear()
 
     for line in lines:
@@ -202,8 +214,8 @@ def parse(lines: list[str]) -> dict[str, VersionedFile]:
             basename = header_path.rsplit("/", 1)[-1]
             entry = pending.pop(basename, None)
             if entry is None:
-                print(f"Warning: 'Versions of {header_path}' has no matching "
-                      f"directory listing entry - skipping.", file=sys.stderr)
+                log.warning("'Versions of %s' has no matching directory listing "
+                            "entry - skipping.", header_path)
             in_block = True
             active_entry = entry
             active_path = header_path
@@ -358,7 +370,7 @@ def save_json(versioned: dict[str, VersionedFile], out_path: str) -> None:
     ]
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
-    print(f"\nFull results saved to: {out_path}")
+    log.info("Full results saved to: %s", out_path)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -378,21 +390,29 @@ def main() -> None:
                         help="Save full results as JSON")
     parser.add_argument("--raw-dump", metavar="FILE",
                         help="Save raw mega-ls output for debugging")
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-v", "--verbose", action="store_true",
+                           help="Show debug output (e.g. the mega-* commands being run)")
+    verbosity.add_argument("-q", "--quiet", action="store_true",
+                           help="Suppress progress messages; only warnings/errors and "
+                                "the report are shown")
     args = parser.parse_args()
+
+    configure_logging(args.verbose, args.quiet)
 
     check_logged_in()
 
-    print(f"Scanning {args.path!r} ...", flush=True)
+    log.info("Scanning %r ...", args.path)
     lines = fetch_raw(args.path)
-    print(f"  {len(lines)} lines received.", flush=True)
+    log.info("  %d lines received.", len(lines))
 
     if args.raw_dump:
         with open(args.raw_dump, "w", encoding="utf-8", errors="replace") as fh:
             fh.write("\n".join(lines))
-        print(f"Raw output saved to: {args.raw_dump}")
+        log.info("Raw output saved to: %s", args.raw_dump)
 
     versioned = parse(lines)
-    print(f"  {len(versioned)} files have old versions.\n")
+    log.info("  %d files have old versions.\n", len(versioned))
 
     print_report(versioned, top_n=args.top)
 
