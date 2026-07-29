@@ -115,3 +115,25 @@ local config/database directly — is an undocumented, proprietary,
 version-specific format with no public API, not something to build a public
 tool's core behavior on. Verdict: fragility/complexity not justified by the
 ergonomic win, given it wouldn't reliably serve the target use case anyway.
+
+## Rejected: renaming `megavers-prune` to `megavers-clean`
+
+**Context:** "prune" vs. "clean" as the command name for deleting old file
+version histories.
+
+**Decision:** Keep `megavers-prune`. Not renamed.
+
+**Rationale:** "prune" is the established term in dev tooling for exactly
+this operation — `git prune`/`gc`, `docker system prune`, `npm prune` all
+mean "remove stale-but-safe-to-remove things while keeping the current state
+intact," which is precisely what this command does (the current version of
+every file is always kept; only old version snapshots are deletable).
+"clean" is more ambiguous and carries baggage from `git clean` (deletes
+untracked *files* entirely, not old versions of tracked ones) and `mvn
+clean` (wipe build output) — a user could reasonably expect
+`megavers-clean` to delete files outright, which is exactly the kind of
+misunderstanding to avoid given deletion here is permanent. Secondary
+factor: `megavers-prune` is already published on PyPI (v0.1.1) as the entry
+point and referenced throughout the README/CHANGELOG, so a rename now has a
+real (if small) cost, unlike the config-filename rename which happened in
+the zero-cost pre-release window.
