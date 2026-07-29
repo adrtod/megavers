@@ -54,4 +54,4 @@ PyPI release. All must-fix and should-fix items addressed:
 ## Lower priority
 
 - [ ] `CONTRIBUTING.md`
-- [ ] `--verbose` / `--quiet` flags using `logging` instead of `print`
+- [x] `--verbose` / `--quiet` flags using `logging` instead of `print`

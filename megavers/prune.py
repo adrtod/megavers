@@ -11,6 +11,7 @@ Keeps the current (latest) version of every file untouched.
 import re
 import sys
 import json
+import logging
 import argparse
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -19,9 +20,11 @@ from pathlib import Path, PurePosixPath
 
 from megavers import __version__
 from megavers.analyze import (
-    OldVersion, VersionedFile, check_logged_in, fetch_raw, parse, fmt_size, fmt_date,
-    parse_mtime, run_mega,
+    OldVersion, VersionedFile, check_logged_in, configure_logging, fetch_raw, parse,
+    fmt_size, fmt_date, parse_mtime, run_mega,
 )
+
+log = logging.getLogger(__name__)
 
 USER_CONFIG_SEARCH_PATH = [
     Path.cwd() / "config.toml",
@@ -72,16 +75,16 @@ def validate_filters(filters: list[dict]) -> None:
         label = f.get("name") or f"filter #{i + 1}"
         unknown = set(f) - FILTER_KEYS
         if unknown:
-            print(f"Error: unrecognized key(s) in config filter {label!r}: "
-                  f"{sorted(unknown)}", file=sys.stderr)
+            log.error("Error: unrecognized key(s) in config filter %r: %s",
+                      label, sorted(unknown))
             sys.exit(1)
         if not f.get("name"):
-            print(f"Error: {label} is missing a 'name'.", file=sys.stderr)
+            log.error("Error: %s is missing a 'name'.", label)
             sys.exit(1)
         if not f.get("path_contains") and not f.get("extensions"):
-            print(f"Error: config filter {label!r} has neither 'path_contains' nor "
-                  "'extensions' set, so it would match every file. Add at least one, "
-                  "or remove the filter.", file=sys.stderr)
+            log.error("Error: config filter %r has neither 'path_contains' nor "
+                      "'extensions' set, so it would match every file. Add at least "
+                      "one, or remove the filter.", label)
             sys.exit(1)
 
 
@@ -128,20 +131,20 @@ def load_versioned(args) -> dict[str, VersionedFile]:
                 )
                 out[vf.path] = vf
         except FileNotFoundError:
-            print(f"Error: {args.from_json} not found.", file=sys.stderr)
+            log.error("Error: %s not found.", args.from_json)
             sys.exit(1)
         except (json.JSONDecodeError, KeyError, TypeError) as e:
-            print(f"Error: {args.from_json} is not a valid megavers-analyze --json "
-                  f"file ({e}).", file=sys.stderr)
+            log.error("Error: %s is not a valid megavers-analyze --json file (%s).",
+                      args.from_json, e)
             sys.exit(1)
-        print(f"Loaded {len(out)} versioned files from {args.from_json}.")
+        log.info("Loaded %d versioned files from %s.", len(out), args.from_json)
         return out
     else:
-        print(f"Scanning {args.path!r} ...", flush=True)
+        log.info("Scanning %r ...", args.path)
         lines = fetch_raw(args.path)
-        print(f"  {len(lines)} lines received.", flush=True)
+        log.info("  %d lines received.", len(lines))
         versioned = parse(lines)
-        print(f"  {len(versioned)} files have old versions.")
+        log.info("  %d files have old versions.", len(versioned))
         return versioned
 
 
@@ -150,9 +153,9 @@ def warn_on_count_mismatches(versioned: dict[str, VersionedFile]) -> None:
     e.g. versions owned by a contact, which deleteversions/rm cannot remove."""
     for vf in versioned.values():
         if vf.old_count != vf.total_versions - 1:
-            print(f"Warning: {vf.path} reports {vf.total_versions} total versions "
-                  f"but only {vf.old_count} were parsed - some old versions may not "
-                  "be deletable (e.g. owned by a contact).", file=sys.stderr)
+            log.warning("Warning: %s reports %d total versions but only %d were "
+                        "parsed - some old versions may not be deletable (e.g. "
+                        "owned by a contact).", vf.path, vf.total_versions, vf.old_count)
 
 
 # ── Filtering ─────────────────────────────────────────────────────────────────
@@ -177,8 +180,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
         active_fns.append(lambda vf, exts=exts: extension_suffix(vf.path) in exts)
 
     if not active_fns:
-        print("Error: no active filters. Check your config.toml or --filter arguments.",
-              file=sys.stderr)
+        log.error("Error: no active filters. Check your config.toml or --filter arguments.")
         sys.exit(1)
 
     # OR logic across all active filters
@@ -188,7 +190,7 @@ def apply_filters(versioned: dict[str, VersionedFile], args, config_filters: lis
         try:
             threshold = parse_size(args.min_version_size)
         except ValueError as e:
-            print(f"Error: --min-version-size: {e}", file=sys.stderr)
+            log.error("Error: --min-version-size: %s", e)
             sys.exit(1)
         selected = [vf for vf in selected if vf.version_size >= threshold]
 
@@ -297,20 +299,20 @@ def execute_prune(
     current_handles = {vf.handle for vf, _ in rows if vf.handle}
     unsafe = [h for h in all_handles if h in current_handles]
     if unsafe:
-        print(f"Refusing to continue: {len(unsafe)} version(s) scheduled for deletion "
-              "match a file's current-version handle. This should not happen - "
-              "aborting without deleting anything.", file=sys.stderr)
+        log.error("Refusing to continue: %d version(s) scheduled for deletion match "
+                  "a file's current-version handle. This should not happen - "
+                  "aborting without deleting anything.", len(unsafe))
         return False
 
     if no_handle:
-        print(f"Warning: {no_handle} version(s) have no handle and will be skipped. "
-              "Re-scan without --from-json to get handles.", file=sys.stderr)
+        log.warning("Warning: %d version(s) have no handle and will be skipped. "
+                    "Re-scan without --from-json to get handles.", no_handle)
     if not all_handles:
         print("No deletable versions found (no handles available).")
         return True
 
-    print(f"\nDeleting {len(all_handles)} old version(s) across {len(rows)} file(s) "
-          f"({fmt_size(total_bytes)} to recover) ...")
+    log.info("\nDeleting %d old version(s) across %d file(s) (%s to recover) ...",
+             len(all_handles), len(rows), fmt_size(total_bytes))
     return _run_batched("mega-rm", all_handles, total_bytes)
 
 
@@ -420,11 +422,19 @@ examples:
                       help="List filters defined in config and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-v", "--verbose", action="store_true",
+                           help="Show debug output (e.g. the mega-* commands being run)")
+    verbosity.add_argument("-q", "--quiet", action="store_true",
+                           help="Suppress progress messages; only warnings/errors and "
+                                "the report are shown")
+
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    configure_logging(args.verbose, args.quiet)
 
     config_path = args.config or find_user_config()
     config_filters = load_config(config_path)

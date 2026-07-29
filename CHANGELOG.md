@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `-v`/`--verbose` and `-q`/`--quiet` flags on both commands. Progress and
+  warning/error messages now go through `logging` to stderr instead of `print`,
+  so stdout carries only the report/JSON output; `--verbose` additionally logs
+  the underlying `mega-*` commands being run.
+
 ## [0.1.0] — 2026-07-28
 
 Initial release.

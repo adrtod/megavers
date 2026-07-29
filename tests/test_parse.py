@@ -223,12 +223,12 @@ def test_parse_timestamp_suffix_stripped():
         assert "#" not in vf.name
 
 
-def test_parse_orphan_version_block_ignored(capsys):
+def test_parse_orphan_version_block_ignored(caplog):
     # ghost.txt never appeared in directory listing — its versions block must be ignored
     result = parse(ORPHAN_VERSION_BLOCK.splitlines())
     assert "/docs/ghost.txt" not in result
     assert result == {}
-    assert "ghost.txt" in capsys.readouterr().err
+    assert "ghost.txt" in caplog.text
 
 
 def test_parse_single_file_scan_no_section_header():
@@ -246,11 +246,11 @@ def test_parse_hash_in_real_filename_not_stripped():
     assert result["/docs/notes#12345"].name == "notes#12345"
 
 
-def test_parse_missing_versions_block_warns(capsys):
+def test_parse_missing_versions_block_warns(caplog):
     # phantom.txt claims 3 versions but no "Versions of" block ever appears for it
     result = parse(MISSING_VERSIONS_BLOCK.splitlines())
     assert result == {}
-    assert "phantom.txt" in capsys.readouterr().err
+    assert "phantom.txt" in caplog.text
 
 
 def test_parse_versions_sorted_descending_regardless_of_input_order():
