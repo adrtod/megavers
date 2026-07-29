@@ -2,6 +2,7 @@
 (execute_prune / _run_batched) — the pieces that actually talk to MEGAcmd."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -122,6 +123,24 @@ def test_init_config_refuses_to_overwrite(tmp_path):
         init_config(dest)
     # Original content must survive the refused overwrite.
     assert "mine" in dest.read_text()
+
+def test_init_config_writes_into_existing_directory(tmp_path):
+    # `--init-config .` should write .megavers.toml inside the directory,
+    # not treat the directory itself as an existing target and refuse.
+    init_config(tmp_path)
+    dest = tmp_path / ".megavers.toml"
+    assert dest.exists()
+    assert load_config(dest) == load_config(None)
+
+def test_init_config_recognizes_relative_path_in_search_path(tmp_path, monkeypatch, capsys):
+    # dest is relative (as typed on the CLI) but denotes the same file as the
+    # (absolute) search path entry - must still be recognized as auto-picked-up.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
+        tmp_path / ".megavers.toml", tmp_path / "home" / "config.toml",
+    ])
+    init_config(Path(".megavers.toml"))
+    assert "pick it up automatically" in capsys.readouterr().out
 
 
 # ── --from-json round-trip ────────────────────────────────────────────────────

@@ -63,6 +63,8 @@ def load_config(path: Path | None) -> list[dict]:
 def init_config(dest: Path) -> None:
     """Copy the bundled default config to `dest` so the user has a starting
     point to customize, without touching the package-installed original."""
+    if dest.is_dir():
+        dest = dest / ".megavers.toml"
     if dest.exists():
         log.error("Error: %s already exists. Remove it, edit it directly, or "
                   "pass a different --init-config path.", dest)
@@ -70,7 +72,7 @@ def init_config(dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(bundled_config_text(), encoding="utf-8")
     print(f"Wrote default config to: {dest}")
-    if dest in USER_CONFIG_SEARCH_PATH:
+    if dest.resolve() in (p.resolve() for p in USER_CONFIG_SEARCH_PATH):
         print("megavers-prune will pick it up automatically. Edit it to customize filters.")
     else:
         print(f"Pass --config {dest} to use it (it's outside the default search path).")

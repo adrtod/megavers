@@ -17,7 +17,9 @@ All notable changes to this project will be documented in this file.
   the underlying `mega-*` commands being run.
 - `megavers-prune --init-config [PATH]` — writes a copy of the bundled default
   config to `~/.config/megavers/config.toml` (or `PATH`) as a starting point
-  for customization. Refuses to overwrite an existing file.
+  for customization. Refuses to overwrite an existing file. Passing an
+  existing directory (e.g. `.`) writes `.megavers.toml` inside it rather than
+  refusing.
 
 ## [0.1.0] — 2026-07-28
 
