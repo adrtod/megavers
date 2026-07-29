@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.1] — 2026-07-29
 
 ### Changed
 - The cwd-searched config file is now `.megavers.toml` (was `config.toml`) so
