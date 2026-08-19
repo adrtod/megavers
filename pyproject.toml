@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "megavers"
@@ -43,8 +43,11 @@ megavers-config-init = "megavers.config:main_config_init"
 megavers-config-list = "megavers.config:main_config_list"
 megavers-prune       = "megavers.prune:main"
 
-[tool.setuptools]
-packages = ["megavers"]
-
-[tool.setuptools.package-data]
-megavers = ["config.toml"]
+[tool.hatch.build.targets.sdist]
+include = [
+    "/megavers",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]

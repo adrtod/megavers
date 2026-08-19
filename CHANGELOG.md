@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Build backend switched from `setuptools` to `hatchling`. No user-facing
+  effect — same wheel/sdist contents, same console scripts.
+
 ## [0.2.0] — 2026-07-29
 
 ### Added

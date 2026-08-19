@@ -304,3 +304,197 @@ would delete before it runs unattended on a schedule.
   `[defaults]` table; deciding what `keep_n`/`older_than` mean and how CLI
   flags interact with them is prune-specific behavior, consistent with the
   existing `config.py`/`prune.py` split (loading vs. using).
+
+## Build backend: switched from setuptools to Hatchling
+
+**Context:** Reconsidered the project's build backend not just for this
+package's own needs (which are minimal — zero runtime dependencies, one
+small package-data file, no compiled extensions) but as a template for
+future projects: a one-time switch that pays off every time a new project
+starts, even if this particular project barely benefits from it.
+
+**Decision:** Switched `[build-system]` from `setuptools.build_meta` to
+`hatchling.build`. Removed `[tool.setuptools]`/`[tool.setuptools.package-data]`
+entirely — Hatchling auto-includes non-`.py` files inside the package
+directory (`megavers/config.toml`) for the wheel with no config needed.
+
+**Rationale:** Hatchling is PEP 621-native (matching the project's existing
+metadata style, unlike poetry's historically non-standard `[tool.poetry]`
+section), well-maintained, and its extras (env management, matrix testing)
+are opt-in rather than requiring a rewrite later if ever wanted. Verified
+before adopting: built both wheel and sdist, inspected contents directly
+(`zipfile -l` / `tar tzf`), installed each into a fresh venv, confirmed all
+four console-script entry points work and `config.toml` is actually
+readable as package data at runtime — not just assumed the switch would
+work.
+
+**Found and fixed during verification: sdist over-inclusion.** Hatchling's
+default sdist file-selection pulled in `.claude/settings.local.json` — a
+file that's *not* excluded by this repo's own `.gitignore`, only by this
+machine's personal `~/.config/git/ignore` (a global, per-user git config,
+invisible to the repo itself). Building the sdist on a different machine
+would silently produce different contents depending on that machine's
+global gitignore — a real reproducibility gap, and in this case one that
+would have shipped a maintainer's local Claude Code permission settings to
+PyPI. Fixed by replacing implicit VCS-based inclusion with an explicit
+`[tool.hatch.build.targets.sdist] include` allowlist (package source,
+tests, README, CHANGELOG, LICENSE) — immune to *any* future untracked or
+locally-ignored file showing up unannounced, not just this specific one.
+The wheel target was unaffected (Hatchling scopes wheel contents to the
+package directory by default, which was already correct).
+
+## Release subagent switched to `hatch` (version/build/publish)
+
+**Context:** `.claude/agents/release.md` bumped the version by hand-editing
+`pyproject.toml`, built via `python -m build`, and published via `twine
+upload` (credentials from `~/.pypirc`). This predated the Hatchling
+build-backend switch; `python -m build` kept working unchanged since it's
+backend-agnostic. With Hatchling in place, `hatch` (its own reference CLI)
+can do all three natively.
+
+**Decision:** Full switch — `hatch version`, `hatch build`, and `hatch
+publish` for real PyPI uploads going forward, not a hybrid that keeps
+`twine`. Before trusting `hatch publish` for a real release, did a
+**one-time** shadow release to TestPyPI to prove the credential-passing
+mechanism actually works, rather than assuming. That verification is not
+written into the agent's instructions — every release after this one calls
+`hatch publish` directly with no recurring TestPyPI detour.
+
+**Verification performed (not just assumed):** installed `hatch` in an
+isolated `/tmp` venv, tested against a scratch copy of the repo — confirmed
+`hatch version <X>` correctly rewrites the static `version = "..."` field
+(and refuses to set a version that isn't strictly higher than the current
+one — a nice built-in safety check), confirmed `hatch build` produces
+identical wheel/sdist contents to what was already verified for Hatchling
+directly, and read `hatch publish --help` plus its source
+(`hatch/publish/index.py`) to confirm real flags rather than assumed ones:
+`-r/--repo` (env `HATCH_INDEX_REPO`) with built-in `main`/`test` aliases
+(`test` → `test.pypi.org`, default is `main` → `pypi.org`), and
+`-u/--user`/`-a/--auth` (env `HATCH_INDEX_USER`/`HATCH_INDEX_AUTH`) for
+credentials — `hatch publish` does *not* read `~/.pypirc` the way `twine`
+does, so the token has to be extracted from it and passed via these env
+vars instead. No `--dry-run` flag exists; publishing to `-r test`
+(TestPyPI) is the closest equivalent, which is exactly what the one-time
+shadow release used. Then actually built a throwaway dev-suffixed version
+(`0.3.1.dev0`) from the scratch copy, published it to TestPyPI with the
+real `[testpypi]` token from `~/.pypirc`, and installed it from
+`test.pypi.org` into a fresh venv to confirm all four console-script entry
+points and `config.toml` package-data still work through the full
+`hatch`-built artifact — before ever touching real PyPI or the rewritten
+agent file.
+
+**Rationale:** An attempt to delegate this CLI research to a read-only
+Explore subagent failed — it correctly refused to run `pip install`/write
+to `/tmp`, since that agent type is restricted to read-only search. The
+verification had to be done directly, outside subagent delegation, for
+anything requiring real installs/builds/network calls.
+
+## Correction: credentials moved into hatch's own config, not sourced from `~/.pypirc`
+
+**Context:** The entry above says `hatch publish` doesn't read `~/.pypirc`.
+That was based on its `--help` output and docs, not its actual source —
+reading `hatch/publish/auth.py` afterward showed it *does* have a
+`~/.pypirc`-reading fallback (`AuthenticationCredentials._read_pypirc()`).
+But that fallback looks for a `.pypirc` *section* matching the literal
+`--repo` name — and hatch's built-in aliases are `main`/`test`, while
+`.pypirc`'s convention (used by `twine`) is `pypi`/`testpypi`. Those never
+match, so the fallback is practically dead for any standard `.pypirc` —
+confirmed empirically: `hatch publish` with *no* `-r`/`-u`/`-a` at all
+still failed with `Missing required option: user`.
+
+**Decision:** Stored the PyPI and TestPyPI tokens directly in hatch's own
+persistent config instead (`~/.config/hatch/config.toml`, via `hatch config
+set publish.index.repos.<main|test>.{user,auth,url}`), rather than passing
+them via `HATCH_INDEX_USER`/`HATCH_INDEX_AUTH` env vars extracted from
+`~/.pypirc` each run. Verified with the `test` repo first (a real, if
+disposable, publish to TestPyPI succeeded with zero explicit
+credentials/flags) before configuring `main` with the real token the same
+way. `.claude/agents/release.md`'s publish step simplified accordingly —
+`hatch publish -n dist/megavers-<new>*` now needs nothing else.
+
+**Non-obvious bit:** setting `publish.index.repos.<name>.user`/`.auth`
+alone isn't enough — `hatch`'s config loader validates that any *manually
+defined* repo entry includes a `url` key and aborts otherwise (`Hatch
+config field ... must define a url key`), even though the built-in
+`main`/`test` aliases would have auto-supplied that same URL if the entry
+had been left absent entirely. Had to also explicitly set
+`publish.index.repos.<name>.url` to the standard upload URLs
+(`https://upload.pypi.org/legacy/` / `https://test.pypi.org/legacy/`) for
+each.
+
+**Also tightened `~/.pypirc` and `~/.config/hatch/config.toml` to `600`**
+(owner-only) — `~/.pypirc` was found at `664` (group- and world-readable)
+before this work; hatch's own config file was already `600` by default.
+
+## Releases moved to GitHub Actions, publishing via Trusted Publishing
+
+**Context:** Even after moving PyPI credentials into hatch's own config
+(previous entry), a long-lived PyPI publish token still lived on the local
+development machine — if that machine were ever compromised, the token
+could be used to publish malicious releases under the `megavers` name.
+
+**Decision:** Added `.github/workflows/release.yml`, triggered by pushing a
+`v*` tag (the exact convention `.claude/agents/release.md` already used).
+Three jobs: `test` (single-version sanity gate on the tagged commit) →
+`build` (`hatch build`, artifact passed via `actions/upload-artifact`) →
+`publish` (`pypa/gh-action-pypi-publish`, using PyPI **Trusted Publishing**
+— OIDC-based, no stored secret at all; PyPI issues a short-lived token per
+run). `permissions: id-token: write` is scoped to the `publish` job only
+(least privilege), and `environment: pypi` on that job matches the
+environment name registered in PyPI's trusted-publisher config for this
+repo — that's what scopes PyPI's trust to *this specific job*, not "any
+job in this workflow file."
+
+`.claude/agents/release.md` updated to hand off accordingly: it still does
+everything that needs judgment (version bump, changelog prose, git
+tag/push — steps requiring an LLM's read of `git log`/decisions a CI
+workflow can't sensibly make), but no longer runs `hatch build`/`hatch
+publish` itself. After pushing the tag, it now finds the exact triggered
+run (`gh run list --workflow=release.yml --commit=<sha>`, not "most recent
+run" — avoids ambiguity if another run is in flight) and watches it to
+completion (`gh run watch <id> --exit-status`) before doing the final
+live-package verification. On failure, the agent's instructions explicitly
+say to stop and report rather than silently fall back to a local
+`hatch publish` — doing so would defeat the entire point of moving publish
+credentials off the local machine.
+
+The PyPI-side trusted-publisher registration (project → Owner `adrtod`,
+Repository `megavers`, Workflow `release.yml`, Environment `pypi`) is a
+one-time manual step on PyPI's website that only the project owner can do
+— nothing in the repo can register it, and it isn't repo/version-controlled
+state.
+
+**Rationale:** GitHub Actions' OIDC-based Trusted Publishing eliminates the
+long-lived-secret risk entirely for the *standard* release path — there's
+no PyPI token to leak from a compromised laptop, stolen `~/.config/hatch/config.toml`,
+or an accidentally-committed dotfile, because none exists for this purpose
+anymore. `~/.config/hatch/config.toml`'s credentials (previous entry) were
+left in place rather than removed, as an explicit manual fallback — not
+part of the standard flow, but not deleted either, in case CI-based
+publishing is ever unavailable and a human needs to intervene directly.
+`pypa/gh-action-pypi-publish` was chosen over `hatch publish
+--trusted-publishing` for the actual upload step since it's the
+PyPA-official, documented reference implementation PyPI's own trusted
+publishing guide uses as the example — `hatch build` is still used for the
+build step itself, since that's already proven identical to a plain
+Hatchling build (see earlier entries) and keeping it keeps the artifact
+byte-for-byte consistent with what `hatch build` already produces locally.
+
+**Also added `.github/workflows/release-test.yml`**, a permanent but
+`workflow_dispatch`-only diagnostic workflow — never runs automatically —
+that mirrors `release.yml`'s test→build→publish structure but targets
+TestPyPI (`repository-url: https://test.pypi.org/legacy/`, its own
+`environment: testpypi`, its own separate trusted-publisher registration on
+`test.pypi.org` — TestPyPI is a fully separate service from PyPI, with
+independent trust config). Kept permanently rather than added-then-deleted
+(unlike the earlier one-time local hatch shadow test), since it's inert
+unless someone deliberately triggers it, so it doesn't violate the
+"don't bake recurring verification into the standard path" principle — it
+just makes re-verifying the pipeline cheap in the future (e.g. after
+bumping the `pypa/gh-action-pypi-publish` or `hatch` version). Each run
+computes a throwaway unique version (`<current-version>.dev<run-number>`,
+via `hatch version --force` — `--force` needed because PEP 440 orders
+`dev` releases *before* their base version, which `hatch version` would
+otherwise reject as a "downgrade") in the ephemeral CI checkout only —
+never touches the real `pyproject.toml`, never risks colliding with a real
+release or a previous test run.

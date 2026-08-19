@@ -157,14 +157,12 @@ A full cleanup example, putting `megavers-analyze` and `megavers-prune` together
 
     ```cron
     # MEGAcmd keeps its login session on disk, so cron doesn't need to log in again
-    # Runs every Sunday at 3:00 AM; on failure, prints a clearly-flagged line
-    # instead of a normal-looking log entry, so a broken session doesn't go unnoticed
     0 3 * * 0 megavers-prune --yes >> ~/megavers.log 2>&1 || echo "$(date): FAILED - check 'mega-whoami'; session may need 'mega-login' again" >> ~/megavers.log
     ```
 
-    The login session (`~/.megaCmd/session`) can be invalidated by an explicit `mega-logout`, a password change, or MEGA revoking the device — if that happens, the cron job can't recover on its own (`mega-login` needs an interactive password prompt, and putting a password in the crontab would defeat the point of avoiding shell history exposure). Check the log occasionally, or re-run `mega-login` interactively if you see a `FAILED` line.
+    If the session is ever invalidated (logout, password change, revoked device), cron can't recover on its own — `mega-login` needs an interactive prompt. Watch the log for `FAILED` lines.
 
-    No `--keep-n`/`--older-than` needed at this point unless you want them — with none set, matched files have *all* their old versions deleted, keeping only the current one. Re-run without `--yes` occasionally afterward to sanity-check what the filters are still catching.
+    No `--keep-n`/`--older-than` needed unless you want them — with neither set, *all* old versions of matched files are deleted, keeping only the current one. Re-run without `--yes` occasionally to sanity-check what's still being caught.
 
 ## Commands
 
@@ -189,6 +187,8 @@ options:
   -q, --quiet    Suppress progress messages; only warnings/errors and the report
                  are shown
 ```
+
+`--top` only limits the console report's three tables — `--json` always saves *every* file with old versions, uncapped, regardless of `--top`. This matters if you plan to reuse the scan with `megavers-prune --from-json`, which needs the full data, not just the top N shown on screen.
 
 The report has three ranked tables:
 
@@ -249,7 +249,7 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 ### `megavers-config-init` — Write a starting config
 <a id="megavers-config-init"></a>
 
-Writes a copy of the bundled default filter config to disk, as a starting point to customize. Refuses to overwrite an existing file.
+Writes a copy of the bundled default filter config (see [`megavers/config.toml`](megavers/config.toml)) to disk, as a starting point to customize. Refuses to overwrite an existing file.
 
 ```
 usage: megavers-config-init [-h] [--version] [-v | -q] [PATH]
@@ -303,7 +303,7 @@ extensions = [".pyc", ".pyo"]
 
 Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
-**The bundled default.** The snippet above is only a syntax sample, not the full file — see [`megavers/config.toml`](megavers/config.toml) for the real thing. It ships with more filters active than shown above — broadly applicable ones regardless of your workflow: common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.), and git internals — plus the `results` filter above included commented out as a more workflow-specific example.
+**The bundled default.** The snippet above is only a syntax sample, not the full file. It ships with more filters active than shown above — broadly applicable ones regardless of your workflow: common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.), and git internals — plus the `results` filter above included commented out as a more workflow-specific example.
 
 **Default retention policy.** An optional `[defaults]` table sets `keep_n`/`older_than` values that `megavers-prune` falls back to whenever the corresponding CLI flag isn't given — the CLI flag always wins when both are set. Useful for unattended/cron runs, so a bare `megavers-prune --yes` doesn't delete *every* old version of every matched file:
 
@@ -315,9 +315,7 @@ older_than = 90
 
 Commented out in the bundled default (see above) — most users want to review what a policy would delete before it runs unattended on a schedule.
 
-**Creating your own.** Run `megavers-config-init` to copy the bundled default to `~/.config/megavers/config.toml` as a starting point (pass a path to write it elsewhere; it refuses to overwrite an existing file). Or write `./.megavers.toml` / `~/.config/megavers/config.toml` from scratch, using the syntax above. For one-off needs without any config file at all, use `--path-contains` / `--ext` on the command line instead.
-
-**Listing what's active.** Run `megavers-config-list` to see the full current list of filters in effect (bundled default, or your own config if you've created one).
+**Creating your own.** See [`megavers-config-init`](#megavers-config-init) above to bootstrap a copy. Or write `./.megavers.toml` / `~/.config/megavers/config.toml` from scratch, using the syntax above. For one-off needs without any config file at all, use `--path-contains` / `--ext` on the command line instead.
 
 ### `megavers-config-list` — List active filters
 <a id="megavers-config-list"></a>

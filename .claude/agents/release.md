@@ -1,6 +1,6 @@
 ---
 name: release
-description: Handles the full megavers release workflow. Use when asked to cut a new release or publish to PyPI. Bumps version, updates CHANGELOG, creates a git tag, builds the wheel, and uploads to PyPI.
+description: Handles the full megavers release workflow. Use when asked to cut a new release or publish to PyPI. Bumps version, updates CHANGELOG, creates and pushes a git tag, then waits for GitHub Actions to build and publish to PyPI.
 tools: Read, Edit, Bash
 ---
 
@@ -24,58 +24,79 @@ You handle the full release workflow for the megavers project at /media/adrien/d
      - minor (new features, backward-compatible)
      - major (breaking changes)
 
-3. **Update `pyproject.toml`** (only if bumping)
-   - Set `version = "<new>"` under `[project]`
+3. **Ensure `hatch` is available**
+   ```bash
+   pip install hatch --quiet
+   ```
+   Used below for the version bump. Building and publishing happen in
+   GitHub Actions now, not locally.
 
-4. **Update `CHANGELOG.md`** (only if bumping, or if the existing entry needs a date)
+4. **Bump the version** (only if bumping, per step 2)
+   ```bash
+   hatch version <new>
+   ```
+   This reads and rewrites the static `version = "..."` field under `[project]` in
+   `pyproject.toml`. `hatch version` refuses to set a version that isn't strictly
+   higher than the current one — if that happens, double-check the intended version
+   before overriding.
+
+5. **Update `CHANGELOG.md`** (only if bumping, or if the existing entry needs a date)
    - Add a new `## [<new>] — <YYYY-MM-DD>` section at the top (below the `# Changelog` heading)
    - Summarise changes since the last release by reading `git log <prev_tag>..HEAD --oneline`
      (if there is no previous tag, this is the first release — summarize from the start
      of history, or just confirm the existing changelog entry is accurate)
    - Group entries under `### Added`, `### Fixed`, `### Changed` as appropriate
 
-5. **Version is single-sourced via `importlib.metadata`**
+6. **Version is single-sourced via `importlib.metadata`**
    - `megavers/__init__.py` reads `__version__` from the installed package metadata
      (falling back to `"0.0.0+dev"` only when not installed) — there is no per-file
      version string to edit elsewhere.
 
-6. **Commit the release** (only if `pyproject.toml` or `CHANGELOG.md` changed)
+7. **Commit the release** (only if `pyproject.toml` or `CHANGELOG.md` changed)
    ```bash
    git add pyproject.toml CHANGELOG.md
    git commit -m "Release <new>"
    ```
 
-7. **Create and push the tag**
+8. **Create and push the tag**
    ```bash
    git tag v<new>
    git push origin main
    git push origin v<new>
    ```
 
-8. **Build the distribution**
+9. **Wait for GitHub Actions to build and publish**
+   Pushing the `v<new>` tag in step 8 triggers `.github/workflows/release.yml`
+   (test → build → publish, using PyPI Trusted Publishing — no local
+   credentials involved). Find the exact run tied to the tagged commit
+   (don't rely on "most recent run" — sleep briefly first, since GitHub
+   needs a moment to register the triggered run) and watch it to completion:
    ```bash
-   pip install build --quiet
-   python -m build
+   sleep 5
+   RUN_ID=$(gh run list --workflow=release.yml --commit="$(git rev-parse HEAD)" --json databaseId --jq '.[0].databaseId')
+   gh run watch "$RUN_ID" --exit-status
    ```
-   Verify `dist/megavers-<new>-py3-none-any.whl` and `dist/megavers-<new>.tar.gz` exist.
+   If `RUN_ID` comes back empty, wait a few more seconds and retry the `gh run list`
+   before giving up. If the watched run reports failure, **stop and report it** — do
+   not fall back to building/publishing locally. A failed release needs diagnosing,
+   not a silent local workaround; that would defeat the point of moving publish
+   credentials off this machine.
 
-9. **Upload to PyPI**
-   ```bash
-   pip install twine --quiet
-   twine upload dist/megavers-<new>*
-   ```
-   Requires PyPI credentials (TWINE_USERNAME / TWINE_PASSWORD env vars, or `~/.pypirc`).
-   For TestPyPI first: `twine upload --repository testpypi dist/megavers-<new>*`
-
-10. **Verify the live package**
+10. **Verify the live package** (only after step 9 succeeds)
     ```bash
     pip install --quiet megavers==<new>
     megavers-analyze --version
     megavers-prune --version
+    megavers-config-init --version
+    megavers-config-list --version
     ```
 
 ## Notes
 
-- Never skip the dry-run / confirmation step before uploading to PyPI — it is irreversible.
+- Publishing to PyPI is irreversible — double check the version and `CHANGELOG.md`
+  entry before pushing the tag in step 8, since that's what triggers it.
 - If the tag already exists, abort and ask the user.
-- Clean `dist/` before building to avoid uploading stale artifacts: `rm -rf dist/`
+- Build and publish happen in GitHub Actions via PyPI Trusted Publishing (OIDC) —
+  no PyPI credentials are read or used on the local machine for a standard release.
+  `~/.config/hatch/config.toml` still has PyPI credentials configured from before this
+  change, kept only as a manual-fallback capability, not part of the standard flow.

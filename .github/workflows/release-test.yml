@@ -1,0 +1,68 @@
+name: Release test (TestPyPI)
+
+# Manual-only diagnostic tool: shadow-publishes a throwaway dev-suffixed
+# version to TestPyPI, to sanity-check the release pipeline (hatch build +
+# Trusted Publishing) without touching real PyPI or the real version.
+# Never runs automatically - only via workflow_dispatch. Mirrors release.yml's
+# test -> build -> publish structure; keep the two in sync if either changes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: pip install -e ".[test]"
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Set a unique dev version for this shadow test (ephemeral, not committed)
+        run: |
+          BASE=$(hatch version)
+          hatch version --force "${BASE}.dev${{ github.run_number }}"
+
+      - name: Build sdist and wheel
+        run: hatch build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
