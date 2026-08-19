@@ -1,5 +1,5 @@
-"""Tests for CLI argument parsing, config file lookup, and the deletion path
-(execute_prune / _run_batched) — the pieces that actually talk to MEGAcmd."""
+"""Tests for CLI argument parsing and the deletion path (execute_prune /
+_run_batched) — the pieces that actually talk to MEGAcmd."""
 
 import argparse
 import json
@@ -8,10 +8,7 @@ from pathlib import Path
 import pytest
 
 from megavers.analyze import OldVersion, VersionedFile, cloud_path
-from megavers.prune import (
-    build_parser, find_user_config, init_config, load_config, load_versioned,
-    execute_prune, BUNDLED_CONFIG_LABEL,
-)
+from megavers.prune import build_parser, load_versioned, execute_prune
 
 
 def make_vf(path, old_versions=None, current_size=1000, handle=""):
@@ -77,86 +74,6 @@ def test_cloud_path_accepts_absolute():
 def test_cloud_path_rejects_relative():
     with pytest.raises(argparse.ArgumentTypeError):
         cloud_path("foo/bar")
-
-
-# ── Config file lookup precedence ─────────────────────────────────────────────
-
-def test_find_user_config_none_when_absent(tmp_path, monkeypatch):
-    monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
-        tmp_path / ".megavers.toml", tmp_path / "nonexistent-home" / "config.toml",
-    ])
-    assert find_user_config() is None
-
-def test_find_user_config_prefers_cwd_over_home(tmp_path, monkeypatch):
-    cwd = tmp_path / "cwd"
-    home = tmp_path / "home"
-    cwd.mkdir()
-    home.mkdir()
-    (cwd / ".megavers.toml").write_text("[[filter]]\nname='cwd'\n")
-    (home / ".config" / "megavers").mkdir(parents=True)
-    (home / ".config" / "megavers" / "config.toml").write_text("[[filter]]\nname='home'\n")
-
-    monkeypatch.chdir(cwd)
-    monkeypatch.setattr("megavers.prune.Path.home", lambda: home)
-    monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
-        cwd / ".megavers.toml", home / ".config" / "megavers" / "config.toml",
-    ])
-    found = find_user_config()
-    assert found == cwd / ".megavers.toml"
-
-def test_load_config_bundled_fallback_when_path_is_none():
-    # The bundled default ships with generally-applicable filters active;
-    # more workflow-specific examples (e.g. "results") are commented out.
-    filters = load_config(None)
-    names = {f["name"] for f in filters}
-    assert names == {
-        "git", "os-junk", "editor-swap", "office-locks",
-        "python-cache-dirs", "python-bytecode",
-    }
-
-def test_load_config_from_explicit_path(tmp_path):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text('[[filter]]\nname = "custom"\npath_contains = ["/x/"]\n')
-    filters = load_config(cfg)
-    assert filters == [{"name": "custom", "path_contains": ["/x/"]}]
-
-def test_bundled_config_label_used_when_no_user_config():
-    assert BUNDLED_CONFIG_LABEL == "<bundled default>"
-
-
-# ── --init-config ──────────────────────────────────────────────────────────────
-
-def test_init_config_writes_bundled_default(tmp_path):
-    dest = tmp_path / "nested" / "config.toml"
-    init_config(dest)
-    filters = load_config(dest)
-    assert filters == load_config(None)
-
-def test_init_config_refuses_to_overwrite(tmp_path):
-    dest = tmp_path / "config.toml"
-    dest.write_text("[[filter]]\nname = 'mine'\npath_contains = ['/x/']\n")
-    with pytest.raises(SystemExit):
-        init_config(dest)
-    # Original content must survive the refused overwrite.
-    assert "mine" in dest.read_text()
-
-def test_init_config_writes_into_existing_directory(tmp_path):
-    # `--init-config .` should write .megavers.toml inside the directory,
-    # not treat the directory itself as an existing target and refuse.
-    init_config(tmp_path)
-    dest = tmp_path / ".megavers.toml"
-    assert dest.exists()
-    assert load_config(dest) == load_config(None)
-
-def test_init_config_recognizes_relative_path_in_search_path(tmp_path, monkeypatch, capsys):
-    # dest is relative (as typed on the CLI) but denotes the same file as the
-    # (absolute) search path entry - must still be recognized as auto-picked-up.
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("megavers.prune.USER_CONFIG_SEARCH_PATH", [
-        tmp_path / ".megavers.toml", tmp_path / "home" / "config.toml",
-    ])
-    init_config(Path(".megavers.toml"))
-    assert "pick it up automatically" in capsys.readouterr().out
 
 
 # ── --from-json round-trip ────────────────────────────────────────────────────

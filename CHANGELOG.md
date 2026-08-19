@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] — 2026-07-29
+
+### Added
+- Optional `[defaults]` table in `.megavers.toml`: `keep_n`/`older_than`
+  values that `megavers-prune` falls back to whenever the corresponding CLI
+  flag isn't given (the CLI flag always wins when both are set). Useful for
+  unattended/cron runs, so a bare `megavers-prune --yes` doesn't delete
+  every old version of every matched file.
+
+### Changed
+- **Breaking:** `megavers-prune --init-config`/`--list-filters` removed.
+  Replaced by two standalone commands, `megavers-config-init` and
+  `megavers-config-list`. `megavers-config-init` now takes its destination
+  as a plain optional positional (`megavers-config-init [PATH]`) instead of
+  an optional-value flag.
+
 ## [0.1.3] — 2026-08-19
 
 ### Changed

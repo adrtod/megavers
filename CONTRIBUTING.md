@@ -20,7 +20,7 @@ Tests cover `parse()`, filter logic, config lookup, CLI argument parsing, and th
 
 ## Making changes
 
-- Add or update tests for anything you change in `megavers/analyze.py` or `megavers/prune.py`.
+- Add or update tests for anything you change in `megavers/analyze.py`, `megavers/config.py`, or `megavers/prune.py`.
 - Update `CHANGELOG.md` under `[Unreleased]` for anything user-visible.
 - If you're proposing a non-obvious design choice, or reconsidering one already made, check `DECISIONS.md` first — it records the reasoning behind past calls (e.g. config format, path handling) so we don't relitigate them. Add an entry there for new decisions worth remembering.
 - Keep PRs focused. If you're fixing a bug and notice something else worth cleaning up, open a separate PR.

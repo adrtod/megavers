@@ -3,10 +3,11 @@
 # This is the bundled default, used only when no .megavers.toml is found in
 # the current directory and no config.toml is found in
 # ~/.config/megavers/config.toml. It ships with a few generally-applicable
-# filters active (git internals, OS/editor junk files, Python caches) and one
-# commented-out example for a more workflow-specific case. To customize, run
-# `megavers-prune --init-config`, or copy this file to ./.megavers.toml or
-# ~/.config/megavers/config.toml and edit it there.
+# filters active (git internals, OS/editor junk files, Python caches) and two
+# commented-out examples: a more workflow-specific filter, and a default
+# retention policy ([defaults]). To customize, run `megavers-config-init`, or
+# copy this file to ./.megavers.toml or ~/.config/megavers/config.toml and
+# edit it there.
 #
 # Define named filters below. All filters are active by default.
 # Use --filter NAME on the CLI to activate only specific ones.
@@ -67,3 +68,11 @@ path_contains = ["/.git/"]
 #     ".bin", ".h5", ".hdf5", ".npy", ".npz",
 #     ".pt", ".pth", ".mat", ".csv", ".parquet",
 # ]
+
+# Example: default retention policy, applied by megavers-prune whenever
+# --keep-n/--older-than aren't given on the command line (CLI flags always
+# win over this). Useful for unattended/cron runs so a bare `megavers-prune
+# --yes` doesn't delete every old version of every matched file.
+# [defaults]
+# keep_n = 5
+# older_than = 90

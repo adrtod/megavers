@@ -20,7 +20,9 @@ Tools for analyzing and selectively pruning file version history in a [MEGA](htt
 - [Walkthrough](#walkthrough)
 - [Commands](#commands)
   - [`megavers-analyze` — Space analyzer](#megavers-analyze)
+  - [`megavers-config-init` — Write a starting config](#megavers-config-init)
   - [`.megavers.toml` — Filter definitions](#megavers-toml)
+  - [`megavers-config-list` — List active filters](#megavers-config-list)
   - [`megavers-prune` — Version pruner](#megavers-prune)
 - [Contributing](#contributing)
 
@@ -85,13 +87,13 @@ mega-whoami
 ## Quickstart
 
 ```bash
-megavers-analyze                # see what's eating your quota
-megavers-prune --init-config    # optional: copy the default filters so you can customize them
-megavers-prune                  # preview what would be deleted (dry-run by default — nothing is deleted yet)
-megavers-prune --yes            # actually delete, once you're happy with the preview
+megavers-analyze        # see what's eating your quota
+megavers-config-init    # optional: write a filter config you can customize
+megavers-prune          # preview what would be deleted (dry-run by default — nothing is deleted yet)
+megavers-prune --yes    # actually delete, once you're happy with the preview
 ```
 
-`megavers-prune` uses a handful of broadly-applicable filters out of the box (git internals, OS junk files, Python caches) — the `--init-config` step above is only needed if you want to add or change filters. The walkthrough below shows a complete example, including how to write your own filters for your own storage patterns.
+`megavers-prune` uses a handful of broadly-applicable filters out of the box (git internals, OS junk files, Python caches) — the `megavers-config-init` step above is only needed if you want to add or change filters. The walkthrough below shows a complete example, including how to write your own filters for your own storage patterns.
 
 ## Walkthrough
 
@@ -118,7 +120,7 @@ A full cleanup example, putting `megavers-analyze` and `megavers-prune` together
 2. **Add or adjust filters** in `.megavers.toml` for what you found. Bootstrap a config first if you don't have one:
 
     ```bash
-    megavers-prune --init-config   # writes ~/.config/megavers/config.toml
+    megavers-config-init   # writes ~/.config/megavers/config.toml
     ```
 
     The bundled `python-bytecode` filter already covers `.pyc`/`.pyo` churn. For the backups pattern, add your own:
@@ -244,6 +246,36 @@ TOP 20 FILES BY CHURN RATE (versions/day)
 
 "Overhead vs. current file size" is the ratio of old-version space to current-file space, computed only over files that have old versions — it does not include files with a single version.
 
+### `megavers-config-init` — Write a starting config
+<a id="megavers-config-init"></a>
+
+Writes a copy of the bundled default filter config to disk, as a starting point to customize. Refuses to overwrite an existing file.
+
+```
+usage: megavers-config-init [-h] [--version] [-v | -q] [PATH]
+
+positional arguments:
+  PATH           Destination path (default: ~/.config/megavers/config.toml)
+
+options:
+  --version      Show version and exit
+  -v, --verbose  Show debug output
+  -q, --quiet    Suppress progress messages; only warnings/errors are shown
+```
+
+**Examples:**
+
+```bash
+# Write to the default location (~/.config/megavers/config.toml)
+megavers-config-init
+
+# Write to a project-local config instead
+megavers-config-init .megavers.toml
+
+# Passing an existing directory writes .megavers.toml inside it
+megavers-config-init .
+```
+
 ### `.megavers.toml` — Filter definitions
 <a id="megavers-toml"></a>
 
@@ -273,9 +305,44 @@ Add, remove, or modify filters freely — the tool has no hardcoded logic.
 
 **The bundled default.** The snippet above is only a syntax sample, not the full file — see [`megavers/config.toml`](megavers/config.toml) for the real thing. It ships with more filters active than shown above — broadly applicable ones regardless of your workflow: common OS/editor junk files (`.DS_Store`, `Thumbs.db`, `desktop.ini`, Vim swap files, Office lock files), Python caches (`__pycache__`, `.pytest_cache`, `.pyc`/`.pyo`, etc.), and git internals — plus the `results` filter above included commented out as a more workflow-specific example.
 
-**Creating your own.** Run `megavers-prune --init-config` to copy the bundled default to `~/.config/megavers/config.toml` as a starting point (pass a path to write it elsewhere; it refuses to overwrite an existing file). Or write `./.megavers.toml` / `~/.config/megavers/config.toml` from scratch, using the syntax above. For one-off needs without any config file at all, use `--path-contains` / `--ext` on the command line instead.
+**Default retention policy.** An optional `[defaults]` table sets `keep_n`/`older_than` values that `megavers-prune` falls back to whenever the corresponding CLI flag isn't given — the CLI flag always wins when both are set. Useful for unattended/cron runs, so a bare `megavers-prune --yes` doesn't delete *every* old version of every matched file:
 
-**Listing what's active.** Run `megavers-prune --list-filters` to see the full current list of filters in effect (bundled default, or your own config if you've created one).
+```toml
+[defaults]
+keep_n = 5
+older_than = 90
+```
+
+Commented out in the bundled default (see above) — most users want to review what a policy would delete before it runs unattended on a schedule.
+
+**Creating your own.** Run `megavers-config-init` to copy the bundled default to `~/.config/megavers/config.toml` as a starting point (pass a path to write it elsewhere; it refuses to overwrite an existing file). Or write `./.megavers.toml` / `~/.config/megavers/config.toml` from scratch, using the syntax above. For one-off needs without any config file at all, use `--path-contains` / `--ext` on the command line instead.
+
+**Listing what's active.** Run `megavers-config-list` to see the full current list of filters in effect (bundled default, or your own config if you've created one).
+
+### `megavers-config-list` — List active filters
+<a id="megavers-config-list"></a>
+
+Prints the filters currently in effect — the bundled default, or your own config if you've created one — and exits.
+
+```
+usage: megavers-config-list [-h] [--config FILE] [--version] [-v | -q]
+
+options:
+  --config FILE  Config file path (default: ./.megavers.toml → ~/.config/megavers/config.toml → bundled)
+  --version      Show version and exit
+  -v, --verbose  Show debug output
+  -q, --quiet    Suppress progress messages; only warnings/errors are shown
+```
+
+**Examples:**
+
+```bash
+# List filters from the active config (auto-discovered)
+megavers-config-list
+
+# List filters from an explicit config file
+megavers-config-list --config ./my-filters.toml
+```
 
 ### `megavers-prune` — Version pruner
 <a id="megavers-prune"></a>
@@ -288,8 +355,7 @@ Deletes old version histories for files matched by filters in `.megavers.toml` u
 usage: megavers-prune [-h] [--from-json FILE] [--config FILE]
                          [--filter NAME] [--path-contains STR] [--ext EXT]
                          [--min-version-size SIZE] [--keep-n N] [--older-than DAYS]
-                         [--yes] [--dry-run] [--list-filters] [--init-config [PATH]]
-                         [--version] [-v | -q] [path]
+                         [--yes] [--dry-run] [--version] [-v | -q] [path]
 
 source:
   path                  Cloud path to scan, absolute (default: /)
@@ -305,20 +371,21 @@ filters:
 
 version selection (applied after filters):
   --keep-n N            Keep the N most recent old versions; delete the rest
+                        (overrides [defaults].keep_n in the config, if set)
   --older-than DAYS     Delete old versions whose age exceeds DAYS days
+                        (overrides [defaults].older_than in the config, if set)
 
 mode:
   --yes                 Actually delete. Without this flag, only a preview is shown.
   --dry-run             Preview what would be deleted (the default; this flag mainly
                         exists to make an already-explicit preview clearer).
-  --list-filters        List filters defined in config and exit.
-  --init-config [PATH]  Write a copy of the bundled default config to PATH
-                        (default: ~/.config/megavers/config.toml) and exit.
   --version             Show version and exit
   -v, --verbose         Show debug output (e.g. the mega-* commands being run)
   -q, --quiet           Suppress progress messages; only warnings/errors and the
                         report are shown
 ```
+
+See also: [`megavers-config-init`](#megavers-config-init) to bootstrap a config, [`megavers-config-list`](#megavers-config-list) to see what's active.
 
 Old-version dates from MEGA are in UTC; `--older-than` cutoffs are computed in UTC too, regardless of your local timezone.
 

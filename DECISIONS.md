@@ -214,3 +214,93 @@ sync (easy to let go stale) and another surface to point people to,
 fragmenting away from the two canonical locations rather than reinforcing
 them. Revisit only if the project grows enough to need genuinely separate
 docs (e.g. a filter-writing guide with many worked examples).
+
+## Split `--init-config`/`--list-filters` into their own commands
+
+**Context:** `megavers-prune` carried two flags — `--init-config [PATH]` and
+`--list-filters` — that both short-circuit before any scanning/deletion
+happens and don't conceptually belong to "pruning." `--init-config`
+bootstraps a copy of the bundled default config; `--list-filters` just
+prints the active filter set and exits.
+
+**Decision:** Removed both flags from `megavers-prune`. Added two new
+standalone commands instead: `megavers-config-init` and
+`megavers-config-list`, each with its own entry point in `pyproject.toml`
+and its own tiny argparse parser in the new `megavers/config.py` module.
+This is a breaking CLI change, accepted because the project has no adopted
+user base yet (still pre-1.0) — now is the cheap time to make it.
+
+**Rationale:** A flag whose entire job is "print something unrelated to
+pruning and exit" doesn't compose well with the rest of `megavers-prune`'s
+flag surface (filters, version-selection, mode), and its `--help` output
+was carrying examples that had nothing to do with pruning. Giving each its
+own command makes `--help` for all three commands describe exactly one job.
+Also extracted the underlying config-loading/validation/bootstrap logic
+into `megavers/config.py`, since it's a genuinely separate concern from
+`prune.py`'s scan/filter/delete pipeline and both new commands (plus
+`megavers-prune` itself) need it — a clean one-directional dependency
+(`config.py` → `analyze.py`; `prune.py` → `config.py` + `analyze.py`, no
+cycle).
+
+**Naming:** initially named `megavers-init-config`/`megavers-list-filters`
+(verb-first), then renamed to `megavers-config-init`/`megavers-config-list`
+(noun-first) after checking how MEGAcmd itself names *related* commands,
+not just standalone ones — it groups them noun-first, verb/qualifier after:
+`mega-fuse-add`/`mega-fuse-remove`/`mega-fuse-config`/`mega-fuse-show`, and
+`mega-sync-config`/`mega-sync-issues`/`mega-sync-ignore`. Matching that
+puts the shared `megavers-config-` prefix first, so the relationship
+between the two commands is visible from the name itself (and groups them
+in `megavers-<TAB>` completion) rather than requiring you to read past the
+first word. `megavers-analyze`/`megavers-prune` don't need this treatment —
+they're standalone verbs with no sibling command to group against, matching
+`mega-ls`/`mega-rm`.
+
+**Alternatives considered and rejected:**
+- **A single `megavers <subcommand>` dispatcher** (git/docker style, e.g.
+  `megavers prune`, `megavers analyze`, `megavers config init`) — rejected.
+  `megavers`'s actual sibling/parent tool is MEGAcmd, and MEGAcmd itself uses
+  a flat `mega-<verb>` multi-binary convention (`mega-ls`, `mega-rm`,
+  `mega-login`, `mega-cd`, `mega-sync`, `mega-du`, ...), not a single `mega`
+  dispatcher. `megavers-analyze`/`megavers-prune` were deliberately named to
+  match that convention from the start, so consolidating into one dispatcher
+  now would break consistency with the tool this package exists to wrap,
+  for no benefit specific to `megavers`.
+- **Leave them as flags on `megavers-prune`** — rejected per the Context
+  above: both flags exit before any pruning logic runs, so they're not
+  really "prune options," just squatting on the same binary.
+
+## Default retention policy: `[defaults]` table, CLI always wins
+
+**Context:** `--keep-n`/`--older-than` had to be retyped on every
+`megavers-prune` invocation, including scripted/cron runs — there was no
+way to persist "always keep the 5 most recent" without wrapping the command
+in a shell alias or script.
+
+**Decision:** Added an optional `[defaults]` table to `.megavers.toml` with
+`keep_n`/`older_than` keys, loaded via `load_defaults()`/validated via
+`validate_defaults()` in `megavers/config.py`. `megavers-prune` resolves the
+effective values via a new `resolve_retention()` in `prune.py`: an explicit
+CLI flag always wins; otherwise it falls back to the config value, if set.
+Ships commented out in the bundled default config (like the `results`
+filter example) — opt-in, since most users should review what a policy
+would delete before it runs unattended on a schedule.
+
+**Rationale:**
+- **CLI-always-wins, not the reverse:** a config default that silently
+  overrode an explicit `--keep-n` on the command line would be surprising
+  and hard to debug ("why isn't my flag doing anything"). Explicit input
+  should never be shadowed by a fallback.
+- **`keep_n=0` must not be treated as "unset":** it's a meaningful value
+  (delete all old versions), so the resolution logic checks `is not None`,
+  not truthiness — a naive `cli_keep_n or defaults.get("keep_n")` would
+  incorrectly fall through to the config default when the CLI explicitly
+  passed `0`.
+- **Validation rejects `bool` values explicitly:** TOML's `true`/`false`
+  parse as Python `bool`, which is a subclass of `int` — `isinstance(True,
+  int)` is `True` — so a plain `isinstance(value, int)` check would silently
+  accept `keep_n = true` as `1`. Checked and rejected separately.
+- **Loading/validation (`config.py`) stays separate from resolution
+  (`prune.py`):** `config.py` only knows how to read and validate the raw
+  `[defaults]` table; deciding what `keep_n`/`older_than` mean and how CLI
+  flags interact with them is prune-specific behavior, consistent with the
+  existing `config.py`/`prune.py` split (loading vs. using).

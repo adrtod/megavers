@@ -7,9 +7,10 @@ import pytest
 
 from megavers.analyze import OldVersion, VersionedFile
 from megavers.prune import (
-    build_filter_fn, apply_filters, versions_to_delete, parse_size,
-    validate_filters, _non_negative_int, extension_suffix,
+    build_filter_fn, apply_filters, versions_to_delete, resolve_retention,
+    parse_size, _non_negative_int, extension_suffix,
 )
+from megavers.config import validate_filters
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -275,6 +276,32 @@ def test_versions_to_delete_both_or_logic_old_in_top_n(monkeypatch):
     deleted_mtimes = {v.mtime for v in result}
     assert "2025-06-01T00:00:00" in deleted_mtimes
     assert "2025-01-01T00:00:00" in deleted_mtimes
+
+
+# ── resolve_retention ─────────────────────────────────────────────────────────
+
+def test_resolve_retention_cli_wins_over_defaults():
+    keep_n, older_than = resolve_retention(3, 10, {"keep_n": 5, "older_than": 90})
+    assert (keep_n, older_than) == (3, 10)
+
+def test_resolve_retention_falls_back_to_defaults():
+    keep_n, older_than = resolve_retention(None, None, {"keep_n": 5, "older_than": 90})
+    assert (keep_n, older_than) == (5, 90)
+
+def test_resolve_retention_mixed_cli_and_defaults():
+    # CLI sets keep_n only; older_than falls back to the config default.
+    keep_n, older_than = resolve_retention(3, None, {"keep_n": 5, "older_than": 90})
+    assert (keep_n, older_than) == (3, 90)
+
+def test_resolve_retention_no_defaults_and_no_cli_returns_none():
+    keep_n, older_than = resolve_retention(None, None, {})
+    assert (keep_n, older_than) == (None, None)
+
+def test_resolve_retention_cli_zero_is_not_treated_as_unset():
+    # keep_n=0 is a valid, meaningful value (delete all old versions) -
+    # must not be treated as "not specified" and overridden by the default.
+    keep_n, older_than = resolve_retention(0, None, {"keep_n": 5})
+    assert keep_n == 0
 
 
 # ── parse_size ────────────────────────────────────────────────────────────────

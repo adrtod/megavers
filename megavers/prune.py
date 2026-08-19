@@ -13,9 +13,7 @@ import sys
 import json
 import logging
 import argparse
-import tomllib
 from datetime import datetime, timedelta, timezone
-from importlib.resources import files
 from pathlib import Path, PurePosixPath
 
 from megavers import __version__
@@ -23,59 +21,9 @@ from megavers.analyze import (
     OldVersion, VersionedFile, check_logged_in, cloud_path, configure_logging, fetch_raw,
     parse, fmt_size, fmt_date, parse_mtime, run_mega,
 )
+from megavers.config import resolve_config, load_defaults, validate_defaults
 
 log = logging.getLogger(__name__)
-
-DEFAULT_USER_CONFIG_PATH = Path.home() / ".config" / "megavers" / "config.toml"
-
-USER_CONFIG_SEARCH_PATH = [
-    Path.cwd() / ".megavers.toml",
-    DEFAULT_USER_CONFIG_PATH,
-]
-
-BUNDLED_CONFIG_LABEL = "<bundled default>"
-
-
-# ── Config loading ────────────────────────────────────────────────────────────
-
-def find_user_config() -> Path | None:
-    """Return the first user-supplied config found on disk, or None."""
-    for candidate in USER_CONFIG_SEARCH_PATH:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def bundled_config_text() -> str:
-    return files("megavers").joinpath("config.toml").read_text("utf-8")
-
-
-def load_config(path: Path | None) -> list[dict]:
-    """Load filters from `path`, or from the bundled default config when `path` is None."""
-    if path is None:
-        data = tomllib.loads(bundled_config_text())
-    else:
-        with open(path, "rb") as fh:
-            data = tomllib.load(fh)
-    return data.get("filter", [])
-
-
-def init_config(dest: Path) -> None:
-    """Copy the bundled default config to `dest` so the user has a starting
-    point to customize, without touching the package-installed original."""
-    if dest.is_dir():
-        dest = dest / ".megavers.toml"
-    if dest.exists():
-        log.error("Error: %s already exists. Remove it, edit it directly, or "
-                  "pass a different --init-config path.", dest)
-        sys.exit(1)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(bundled_config_text(), encoding="utf-8")
-    print(f"Wrote default config to: {dest}")
-    if dest.resolve() in (p.resolve() for p in USER_CONFIG_SEARCH_PATH):
-        print("megavers-prune will pick it up automatically. Edit it to customize filters.")
-    else:
-        print(f"Pass --config {dest} to use it (it's outside the default search path).")
 
 
 def extension_suffix(path: str) -> str:
@@ -86,30 +34,6 @@ def extension_suffix(path: str) -> str:
         if lower.endswith(compound):
             return "." + compound.rsplit(".", 1)[-1]
     return PurePosixPath(lower).suffix
-
-
-FILTER_KEYS = {"name", "description", "path_contains", "extensions"}
-
-
-def validate_filters(filters: list[dict]) -> None:
-    """Reject config filters that would match every file (missing criteria) or
-    that contain a typo'd/unrecognised key — both are easy to write by accident
-    and, combined with delete-by-default semantics, expensive to get wrong."""
-    for i, f in enumerate(filters):
-        label = f.get("name") or f"filter #{i + 1}"
-        unknown = set(f) - FILTER_KEYS
-        if unknown:
-            log.error("Error: unrecognized key(s) in config filter %r: %s",
-                      label, sorted(unknown))
-            sys.exit(1)
-        if not f.get("name"):
-            log.error("Error: %s is missing a 'name'.", label)
-            sys.exit(1)
-        if not f.get("path_contains") and not f.get("extensions"):
-            log.error("Error: config filter %r has neither 'path_contains' nor "
-                      "'extensions' set, so it would match every file. Add at least "
-                      "one, or remove the filter.", label)
-            sys.exit(1)
 
 
 def build_filter_fn(f: dict):
@@ -231,6 +155,15 @@ def parse_size(s: str) -> int:
 
 
 # ── Version selection (--keep-n / --older-than) ───────────────────────────────
+
+def resolve_retention(cli_keep_n: int | None, cli_older_than: int | None,
+                       defaults: dict) -> tuple[int | None, int | None]:
+    """CLI --keep-n/--older-than always win when given; otherwise fall back to
+    the config's [defaults] table, if it sets one."""
+    keep_n = cli_keep_n if cli_keep_n is not None else defaults.get("keep_n")
+    older_than = cli_older_than if cli_older_than is not None else defaults.get("older_than")
+    return keep_n, older_than
+
 
 def versions_to_delete(vf: VersionedFile, keep_n: int | None, older_than: int | None) \
         -> list[OldVersion]:
@@ -406,9 +339,6 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
-  # Write a customizable config to ~/.config/megavers/config.toml
-  megavers-prune --init-config
-
   # Preview what would be deleted (default — nothing is deleted without --yes)
   megavers-prune
 
@@ -429,6 +359,10 @@ examples:
 
   # Reuse a previously saved scan
   megavers-prune --from-json results.json
+
+see also:
+  megavers-config-init    write a starting-point filter config
+  megavers-config-list    show which filters are currently active
 """,
     )
 
@@ -454,9 +388,11 @@ examples:
 
     sel = parser.add_argument_group("version selection (applied after filters)")
     sel.add_argument("--keep-n", type=_non_negative_int, metavar="N",
-                     help="Keep the N most recent old versions; delete the rest")
+                     help="Keep the N most recent old versions; delete the rest "
+                          "(overrides [defaults].keep_n in the config, if set)")
     sel.add_argument("--older-than", type=_non_negative_int, metavar="DAYS",
-                     help="Delete old versions whose age exceeds DAYS days")
+                     help="Delete old versions whose age exceeds DAYS days "
+                          "(overrides [defaults].older_than in the config, if set)")
 
     mode = parser.add_argument_group("mode")
     mode.add_argument("--yes", action="store_true",
@@ -464,12 +400,6 @@ examples:
     mode.add_argument("--dry-run", action="store_true",
                       help="Preview what would be deleted (the default; this flag mainly "
                            "exists to make an already-explicit preview clearer).")
-    mode.add_argument("--list-filters", action="store_true",
-                      help="List filters defined in config and exit.")
-    mode.add_argument("--init-config", nargs="?", const=DEFAULT_USER_CONFIG_PATH,
-                      type=Path, metavar="PATH",
-                      help="Write a copy of the bundled default config to PATH "
-                           "(default: ~/.config/megavers/config.toml) and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     verbosity = parser.add_mutually_exclusive_group()
@@ -486,24 +416,14 @@ def main() -> None:
     args = build_parser().parse_args()
     configure_logging(args.verbose, args.quiet)
 
-    if args.init_config is not None:
-        init_config(args.init_config)
-        return
-
-    config_path = args.config or find_user_config()
-    config_filters = load_config(config_path)
-    validate_filters(config_filters)
-    config_label = str(config_path) if config_path else BUNDLED_CONFIG_LABEL
-
-    if args.list_filters:
-        print(f"Filters in {config_label}:")
-        for f in config_filters:
-            print(f"  [{f['name']}]  {f.get('description', '')}")
-            if f.get("path_contains"):
-                print(f"    path_contains: {f['path_contains']}")
-            if f.get("extensions"):
-                print(f"    extensions:    {f['extensions']}")
-        return
+    config_path, config_filters, _ = resolve_config(args.config)
+    defaults = load_defaults(config_path)
+    validate_defaults(defaults)
+    keep_n, older_than = resolve_retention(args.keep_n, args.older_than, defaults)
+    if args.keep_n is None and defaults.get("keep_n") is not None:
+        log.info("Using keep_n=%d from config [defaults]", keep_n)
+    if args.older_than is None and defaults.get("older_than") is not None:
+        log.info("Using older_than=%d from config [defaults]", older_than)
 
     check_logged_in()
     versioned = load_versioned(args)
@@ -517,9 +437,9 @@ def main() -> None:
         return
 
     if args.dry_run or not args.yes:
-        print_dry_run(selected, all_version_bytes, args.keep_n, args.older_than)
+        print_dry_run(selected, all_version_bytes, keep_n, older_than)
     else:
-        ok = execute_prune(selected, args.keep_n, args.older_than)
+        ok = execute_prune(selected, keep_n, older_than)
         if not ok:
             sys.exit(1)
 
