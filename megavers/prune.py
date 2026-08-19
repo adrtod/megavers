@@ -415,8 +415,8 @@ examples:
   # Actually delete, using all filters from config.toml
   megavers-prune --yes
 
-  # Run only the 'git' filter defined in config.toml
-  megavers-prune --filter git --yes
+  # Run only the 'python-bytecode' filter defined in config.toml
+  megavers-prune --filter python-bytecode --yes
 
   # Preview keeping only the 3 most recent old versions per matched file
   megavers-prune --keep-n 3
@@ -438,9 +438,8 @@ examples:
     src.add_argument("--from-json", metavar="FILE",
                      help="Load from megavers-analyze --json output (skips re-scanning)")
     src.add_argument("--config", metavar="FILE", type=Path, default=None,
-                     help="Config file path. Default search order: "
-                          "./.megavers.toml → ~/.config/megavers/config.toml "
-                          "→ bundled default")
+                     help="Config file path (default: ./.megavers.toml "
+                          "→ ~/.config/megavers/config.toml → bundled)")
 
     flt = parser.add_argument_group("filters")
     flt.add_argument("--filter", metavar="NAME", action="append",
@@ -449,7 +448,7 @@ examples:
     flt.add_argument("--path-contains", metavar="STR", action="append",
                      help="Ad-hoc: select files whose path contains STR (repeatable)")
     flt.add_argument("--ext", metavar="EXT", action="append",
-                     help="Ad-hoc: select files with this extension, e.g. .pkl (repeatable)")
+                     help="Ad-hoc: select files with this extension (repeatable)")
     flt.add_argument("--min-version-size", metavar="SIZE",
                      help="Only select files where version space >= SIZE (e.g. 10MB)")
 
@@ -461,18 +460,16 @@ examples:
 
     mode = parser.add_argument_group("mode")
     mode.add_argument("--yes", action="store_true",
-                      help="Actually delete. Without this flag, megavers-prune only "
-                           "previews what would be deleted.")
+                      help="Actually delete. Without this flag, only a preview is shown.")
     mode.add_argument("--dry-run", action="store_true",
-                      help="Preview what would be deleted (default behavior; this flag "
-                           "is only useful to make an already-explicit preview clearer).")
+                      help="Preview what would be deleted (the default; this flag mainly "
+                           "exists to make an already-explicit preview clearer).")
     mode.add_argument("--list-filters", action="store_true",
                       help="List filters defined in config and exit.")
     mode.add_argument("--init-config", nargs="?", const=DEFAULT_USER_CONFIG_PATH,
                       type=Path, metavar="PATH",
                       help="Write a copy of the bundled default config to PATH "
-                           f"(default: {DEFAULT_USER_CONFIG_PATH}) and exit, so you "
-                           "have a starting point to customize filters.")
+                           "(default: ~/.config/megavers/config.toml) and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     verbosity = parser.add_mutually_exclusive_group()

@@ -195,3 +195,22 @@ direction, though: a batch is only downgraded if *every* error line in it
 is a "not found," so a real error co-occurring with some already-gone
 handles still fails loudly rather than being silently swallowed alongside
 the benign ones.
+
+## Rejected: a GitHub Pages docs site
+
+**Context:** Whether to add a GitHub Pages site alongside the README and
+PyPI page.
+
+**Decision:** Not doing it. README + PyPI page remain the only docs.
+
+**Rationale:** GitHub Pages earns its cost when there's content a README
+can't hold well — a searchable multi-page docs site, versioned docs across
+releases, diagrams, screenshots-heavy walkthroughs, an interactive demo.
+`megavers` doesn't have any of that: it's two commands, a handful of flags,
+and a config file, which a well-organized `README.md` handles fine, and it
+already renders natively on both GitHub and PyPI. A separate site's real
+cost isn't the initial setup, it's ongoing — a second place to keep in
+sync (easy to let go stale) and another surface to point people to,
+fragmenting away from the two canonical locations rather than reinforcing
+them. Revisit only if the project grows enough to need genuinely separate
+docs (e.g. a filter-writing guide with many worked examples).

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] — 2026-08-19
+
+### Changed
+- Minor `--help` text wording tweaks and a bundled default filter reorder,
+  to stay consistent with README updates.
+
 ## [0.1.2] — 2026-07-29
 
 ### Changed
